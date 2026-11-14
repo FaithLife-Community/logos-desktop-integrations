@@ -7,7 +7,8 @@ import org.kde.kirigami as Kirigami
 PlasmoidItem {
     id: root
 
-    property var books: []
+    property var allBooks: []
+    readonly property var books: allBooks.filter(b => Plasmoid.configuration.hiddenBooks.indexOf(b.resourceId) < 0)
     property bool loading: false
     property string error: ""
     property string loadedDate: ""
@@ -16,6 +17,13 @@ PlasmoidItem {
 
     function today() {
         return Qt.formatDate(new Date(), "yyyy-MM-dd")
+    }
+
+    function hideBook(resourceId) {
+        const hidden = Plasmoid.configuration.hiddenBooks.slice()
+        if (hidden.indexOf(resourceId) < 0)
+            hidden.push(resourceId)
+        Plasmoid.configuration.hiddenBooks = hidden
     }
 
     function refresh(shuffle) {
@@ -30,7 +38,7 @@ PlasmoidItem {
                 return
             root.loading = false
             try {
-                root.books = JSON.parse(stdout)
+                root.allBooks = JSON.parse(stdout)
                 root.error = ""
                 root.loadedDate = root.today()
             } catch (e) {

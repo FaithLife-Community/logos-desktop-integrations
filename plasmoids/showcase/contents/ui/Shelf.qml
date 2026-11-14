@@ -78,7 +78,7 @@ ColumnLayout {
     ShelfGrid {
         id: grid
         shelf: shelf
-        model: shelf.libraryBooks
+        model: shelf.libraryBooks.slice(0, Math.max(columns, fits))
         Layout.fillWidth: true
         Layout.fillHeight: true
     }

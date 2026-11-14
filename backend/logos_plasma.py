@@ -807,17 +807,26 @@ class Library:
         if not path or not path.exists():
             return None
         with ro_connect(path) as c:
-            docs = c.execute("SELECT Id, Title, Date, ModifiedDate FROM Documents WHERE IsDeleted = 0 "
-                             "AND coalesce(IsTemplate, 0) = 0").fetchall()
+            docs = c.execute("SELECT Id, Title, Date, ModifiedDate, OccasionsJson FROM Documents "
+                             "WHERE IsDeleted = 0 AND coalesce(IsTemplate, 0) = 0").fetchall()
             dated = []
-            for did, title, date, modified in docs:
+            for did, title, date, modified, occasions in docs:
                 d = None
-                if date:
+                # Occasions ("when and where it's preached") carry the real dates; a sermon
+                # can have several, so use the next one, else the latest.
+                try:
+                    occ = sorted(datetime.date.fromisoformat(o["date"][:10])
+                                 for o in json.loads(occasions or "[]") if o.get("date"))
+                except (ValueError, TypeError, AttributeError):
+                    occ = []
+                if occ:
+                    d = next((x for x in occ if x >= today), occ[-1])
+                if d is None and date:
                     try:
                         d = datetime.date.fromisoformat(str(date)[:10])
                     except ValueError:
                         pass
-                if d is None:
+                if d is None and not occ:
                     m = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\b", title or "")
                     if m:
                         dd, mm, yy = map(int, m.groups())
@@ -826,8 +835,10 @@ class Library:
                         except ValueError:
                             d = None
                 dated.append((d, modified or "", did, title or ""))
-            upcoming = sorted([x for x in dated if x[0] and x[0] >= today])
-            past = sorted([x for x in dated if x[0] and x[0] < today], reverse=True)
+            # newest edit first, then by date (stable), so ties go to the most recently edited
+            by_edit = sorted(dated, key=lambda x: x[1], reverse=True)
+            upcoming = sorted([x for x in by_edit if x[0] and x[0] >= today], key=lambda x: x[0])
+            past = sorted([x for x in by_edit if x[0] and x[0] < today], key=lambda x: x[0], reverse=True)
             latest = sorted(dated, key=lambda x: x[1], reverse=True)
             for d, _, did, title in (upcoming[:1] + past[:1] + latest[:1]):
                 ref = None
@@ -839,7 +850,7 @@ class Library:
                     except (ValueError, KeyError, TypeError):
                         continue
                 if not ref:
-                    found = find_references(title)
+                    found = find_references(re.sub(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", "", title))
                     if found:
                         ref = found[0]  # readable form, e.g. "Genesis 4:17-26"
                 if ref:
@@ -864,7 +875,7 @@ class Library:
                    r.CommunityRating, r.CommunityRatingCount, r.Availability,
                    (SELECT group_concat(AlternateResourceId, ' ') FROM AlternateResourceIds a
                     WHERE a.RecordId = r.RecordId)
-            FROM Records r WHERE r.Type = 'text.monograph.commentary.bible' AND r.Availability >= 1""").fetchall()
+            FROM Records r WHERE r.Type = 'text.monograph.commentary.bible' AND r.Availability IN (1, 2)""").fetchall()
         hits = [r for r in rows if covers(r[4], datatype_ref)]
         mine = sorted([r for r in hits if (r[5] or 0) >= 4], key=lambda r: (-r[5], -(r[6] or 0) * (r[7] or 0)))
         rest = sorted([r for r in hits if (r[5] or 0) < 4 and (r[7] or 0) >= 15],
@@ -881,6 +892,8 @@ class Library:
 
     def showcase(self, count=12, seed=None, min_ratings=15):
         """Well-rated books you own but haven't read, one per series/author, rotating daily.
+        Books you've rated count as read (271 rated books have no reading progress: read in
+        print or before progress was synced).
 
         "Unread" uses Logos's synced reading progress (ReadingProgressManager), so books you
         read on other devices are excluded, plus local use counts/last-accessed."""
@@ -900,7 +913,8 @@ class Library:
                    (SELECT group_concat(AlternateResourceId, ' ') FROM AlternateResourceIds a
                     WHERE a.RecordId = r.RecordId)
             FROM Records r JOIN Images i ON i.RecordId = r.RecordId
-            WHERE r.Availability >= 1 AND r.Type IN ({",".join("?" * len(keep_types))})
+            WHERE r.Availability IN (1, 2) AND r.UserRating IS NULL
+              AND r.Type IN ({",".join("?" * len(keep_types))})
               AND r.UseCount = 0 AND r.LastAccessed IS NULL
               AND r.CommunityRatingCount >= ? AND i.Image IS NOT NULL""",
             (*keep_types, min_ratings)).fetchall()
@@ -1638,8 +1652,10 @@ def main_service():
             launch_with_handler(url, s["handler"], token)
             if s["focus"]:
                 self.focus_deadline = time.monotonic() + 90
-                GLib.timeout_add(350, self.focus)   # after KRunner has closed
-                GLib.timeout_add(1800, self.focus)  # again once Logos has handled the link
+                # Ou Dedetai starts a second Logos process to hand the link to the running
+                # one, which can take several seconds; keep raising Logos until then.
+                for ms in s.get("focus_attempts_ms", (350, 1200, 2500, 4000, 6000, 9000)):
+                    GLib.timeout_add(int(ms), self.focus)
 
         def focus(self):
             """Ask KWin to raise the topmost Logos window (async; KWin calls back FocusResult)."""

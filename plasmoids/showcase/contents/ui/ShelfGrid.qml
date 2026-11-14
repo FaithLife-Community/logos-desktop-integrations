@@ -11,6 +11,8 @@ GridView {
     readonly property int columns: Math.max(1, Math.floor(width / (shelf.bookWidth + Kirigami.Units.gridUnit)))
     cellWidth: width / columns
     cellHeight: shelf.bookHeight + shelf.plank + Kirigami.Units.gridUnit * 1.2
+    // how many books make whole rows in the visible height
+    readonly property int fits: columns * Math.max(1, Math.floor(height / cellHeight))
     interactive: contentHeight > height
 
     delegate: Item {
@@ -27,6 +29,7 @@ GridView {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: plank.top
             onOpen: url => shelf.widget.backend.openUrl(url)
+            onHide: id => shelf.widget.hideBook(id)
         }
 
         // The shelf plank: adjacent cells join up into one continuous shelf.

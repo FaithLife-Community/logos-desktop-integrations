@@ -10,6 +10,7 @@ Item {
     required property var info
     property bool tiltEnabled: true
     signal open(string url)
+    signal hide(string resourceId)
 
     property real mx: 0.5
     property real my: 0.5
@@ -126,9 +127,30 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         onPositionChanged: mouse => { book.mx = mouse.x / width; book.my = mouse.y / height }
         onExited: { book.mx = 0.5; book.my = 0.5 }
-        onClicked: book.open(book.info.url)
+        onClicked: mouse => {
+            if (mouse.button === Qt.RightButton)
+                menu.popup()
+            else
+                book.open(book.info.url)
+        }
+    }
+
+    PlasmaComponents.Menu {
+        id: menu
+        PlasmaComponents.MenuItem {
+            text: i18n("Open in Logos")
+            icon.name: "document-open"
+            onTriggered: book.open(book.info.url)
+        }
+        PlasmaComponents.MenuItem {
+            visible: !book.info.sermon
+            text: i18n("I've read this, don't show it")
+            icon.name: "checkmark"
+            onTriggered: book.hide(book.info.resourceId)
+        }
     }
 
     PlasmaComponents.ToolTip {
