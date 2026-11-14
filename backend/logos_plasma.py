@@ -85,10 +85,10 @@ DEFAULTS = {
         "devotionals": [],           # titles/abbreviations; empty = your prioritized devotionals
         "devotional_url": "logosres:{logosres}",  # Logos opens calendar devotionals at today
         "reminders": True,           # reading-plan notifications at each plan's reminder time
-        # Logos (under Wine) can crash when an external link opens a book that isn't
-        # downloaded yet. With this off, such links show a notification and bring Logos
-        # forward instead, so you can download the book from the Library.
-        "link_cloud_books": False,
+        # Books that aren't downloaded yet open by link and Logos offers the download.
+        # Set to false to get a notification (title on the clipboard) instead of the link,
+        # if opening such books from outside Logos ever misbehaves.
+        "link_cloud_books": True,
         "devotional_reminder": "",   # e.g. "07:30" for a daily devotional notification
     },
 }

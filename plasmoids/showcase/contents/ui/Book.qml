@@ -110,7 +110,7 @@ Item {
         }
     }
 
-    // Not downloaded yet: Logos can crash opening these by link, so clicking explains instead.
+    // Not downloaded yet: Logos will offer to download it when opened.
     Kirigami.Icon {
         visible: !!book.info.cloud
         source: "cloud-download"
