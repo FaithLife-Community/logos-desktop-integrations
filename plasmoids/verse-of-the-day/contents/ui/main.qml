@@ -58,6 +58,10 @@ PlasmoidItem {
         return "logosres:" + m[1] + (params.length ? ";" + params.join(";") : "")
     }
 
+    function today() {
+        return Qt.formatDate(new Date(), "yyyy-MM-dd")  // local date, not UTC
+    }
+
     function refresh() {
         loading = true
         const xhr = new XMLHttpRequest()
@@ -81,7 +85,7 @@ PlasmoidItem {
             cfg.lastLogosUrl = reflyToLogos(decodeEntities(href[1]))
             cfg.lastReference = meta(html, "og:title").replace(/\s*[-|–]\s*Biblia.*$/i, "")
             cfg.lastText = meta(html, "og:description")
-            cfg.lastFetchedDate = new Date().toISOString().slice(0, 10)
+            cfg.lastFetchedDate = today()
         }
         xhr.open("GET", cfg.sourceUrl)
         xhr.send()
@@ -89,8 +93,8 @@ PlasmoidItem {
 
     Backend { id: backend }
 
-    toolTipMainText: cfg.lastReference || i18n("Logos Verse of the Day")
-    toolTipSubText: cfg.lastText
+    toolTipMainText: i18n("Logos Verse of the Day")
+    toolTipSubText: i18n("Click to open in Logos")
 
     Plasmoid.icon: "logos-plasma"
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground | PlasmaCore.Types.ConfigurableBackground
@@ -162,20 +166,6 @@ PlasmoidItem {
             text: root.error || i18n("No Verse of the Day yet")
         }
 
-        PlasmaComponents.Label {
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            visible: root.cfg.showReference && art.status === Image.Ready && root.cfg.lastReference !== ""
-            text: root.cfg.lastReference
-            font.bold: true
-            padding: Kirigami.Units.smallSpacing
-            background: Rectangle {
-                color: Kirigami.Theme.backgroundColor
-                opacity: 0.75
-                radius: Kirigami.Units.cornerRadius
-            }
-        }
-
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
@@ -184,19 +174,14 @@ PlasmoidItem {
         }
     }
 
-    // Refresh hourly, and promptly after midnight.
+    // One fetch per day: when the date changes (checked every 10 minutes, no network),
+    // retrying on the next check if a fetch fails.
     Timer {
-        interval: 60 * 1000
+        interval: 10 * 60 * 1000
         running: true
         repeat: true
-        property int ticks: 0
-        onTriggered: {
-            ticks++
-            const today = new Date().toISOString().slice(0, 10)
-            if (today !== root.cfg.lastFetchedDate || ticks % 60 === 0)
-                root.refresh()
-        }
+        onTriggered: if (root.cfg.lastFetchedDate !== root.today() && !root.loading) root.refresh()
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: if (cfg.lastFetchedDate !== today() || !cfg.lastImage) refresh()
 }

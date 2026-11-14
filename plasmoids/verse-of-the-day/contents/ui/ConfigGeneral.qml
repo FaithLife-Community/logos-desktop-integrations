@@ -8,7 +8,6 @@ KCM.SimpleKCM {
     property string cfg_clickAction
     property alias cfg_bible: bibleField.text
     property alias cfg_customUrl: customField.text
-    property alias cfg_showReference: showRef.checked
     property alias cfg_sourceUrl: sourceField.text
     // cached data, not shown
     property string cfg_lastImage
@@ -48,11 +47,6 @@ KCM.SimpleKCM {
             text: i18n("{ref} is replaced with the verse, e.g. BibleESV.Ro6.4")
             font: Kirigami.Theme.smallFont
             opacity: 0.7
-        }
-        QQC2.CheckBox {
-            id: showRef
-            Kirigami.FormData.label: i18n("Overlay:")
-            text: i18n("Show the reference on the image")
         }
         QQC2.TextField {
             id: sourceField

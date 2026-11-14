@@ -343,6 +343,7 @@ class Library:
                 self.error = "Logos library catalog not found"
                 return
         files = [self.catalog_path, Path(str(self.catalog_path) + "-wal"),
+                 self.data_dir / "KeyLinkManager" / "keylinkmanager.db-wal",
                  self.docs_dir / "KeyLinkManager" / "KeyLinkSyncManager.db"]
         stamp = tuple(f.stat().st_mtime if f.exists() else 0 for f in files)
         if stamp == self._stamp:
@@ -363,17 +364,7 @@ class Library:
         if self._db is not None:
             self._db.close()
             self._db = None
-        ranks, self.keylink_lang = {}, {}
-        kl = self.docs_dir / "KeyLinkManager" / "KeyLinkSyncManager.db"
-        if kl.exists():
-            with ro_connect(kl) as c:
-                ranks, self.keylink_lang = {}, {}
-                for rid, rank, lang in c.execute(
-                        "SELECT ResourceId, Rank, Language FROM KeyLinkRules "
-                        "WHERE IsDeleted = 0 AND ResourceId IS NOT NULL"):
-                    ranks[rid] = int(rank)
-                    if lang:
-                        self.keylink_lang[rid] = lang
+        ranks, self.keylink_lang = self._load_priorities()
         rows = self.db().execute("""
             SELECT r.RecordId, r.ResourceId,
                    coalesce(nullif(r.UserAbbreviatedTitle, ''), r.AbbreviatedTitle),
@@ -390,14 +381,49 @@ class Library:
                                    use or 0, ranks.get(rid, 0)))
         # When two Bibles share an alias key ("NASB95" vs "NASB 95" para edition), prefer an
         # exact abbreviation, then the prioritized / most used one.
-        bibles.sort(key=lambda b: (b.abbr.lower() == b.key, b.rank, b.use, -len(b.title)),
-                    reverse=True)
+        bibles.sort(key=lambda b: (b.abbr.lower() != b.key, priority_key(b), len(b.title)))
         self.bibles = bibles
         self.by_key = {}
         for b in bibles:
             self.by_key.setdefault(b.key, b)
         self.lexicons = self._load_lexicons(ranks)
         log(f"catalog: {len(bibles)} Bibles, {len(self.lexicons)} lexicons from {self.catalog_path}")
+
+    def _load_priorities(self):
+        """Logos's Prioritize list: {ResourceId: rank}, where a LOWER rank is HIGHER priority.
+
+        Data/<user>/KeyLinkManager/keylinkmanager.db holds the ranks Logos actually uses;
+        the synced copy in Documents/ is a fallback (same direction, older values)."""
+        queries = [
+            (self.data_dir / "KeyLinkManager" / "keylinkmanager.db",
+             "SELECT r.ResourceId, k.Rank, k.Language, k.DataType, k.SourceResourceId "
+             "FROM KeyLinkRules k JOIN Resources r ON r.Id = k.Resource"),
+            (self.docs_dir / "KeyLinkManager" / "KeyLinkSyncManager.db",
+             "SELECT ResourceId, Rank, Language, DataType, SourceResourceId FROM KeyLinkRules "
+             "WHERE IsDeleted = 0 AND ResourceId IS NOT NULL"),
+        ]
+        for path, sql in queries:
+            if not path.exists():
+                continue
+            try:
+                ranks, langs = {}, {}
+                with ro_connect(path) as c:
+                    for rid, rank, lang, dtype, source in c.execute(sql):
+                        rank = int(rank)
+                        # A rule scoped to Greek/Hebrew data or to the LXX tells us the language.
+                        if not lang and dtype:
+                            lang = "el" if dtype.endswith("+g") else "he" if dtype.endswith("+h") else None
+                        if not lang and source and "LXX" in source.upper():
+                            lang = "el"
+                        if rid not in ranks or rank < ranks[rid]:
+                            ranks[rid] = rank
+                        if lang:
+                            langs[rid] = lang
+                if ranks:
+                    return ranks, langs
+            except sqlite3.Error as e:
+                log(f"prioritization {path.name}: {e}")
+        return {}, {}
 
     def _load_lexicons(self, ranks):
         rows = self.db().execute("""
@@ -424,7 +450,7 @@ class Library:
                 langs = ("g" if t & greek else "") + ("h" if t & hebrew else "")
             lex.append(Resource(rec, rid, logosres_id(rid, alts), abbr or "", title, use or 0,
                                 ranks.get(rid, 0), langs))
-        lex.sort(key=lambda r: (r.rank, r.use), reverse=True)
+        lex.sort(key=priority_key)
         return lex
 
     def lexicon_picker(self, word, size):
@@ -446,7 +472,7 @@ class Library:
         if order == "usage":
             pool = sorted(self.bibles, key=lambda b: b.use, reverse=True)
         else:  # prioritized first (Logos's "Top Bibles"), then most used
-            pool = sorted(self.bibles, key=lambda b: (b.rank > 0, b.rank, b.use), reverse=True)
+            pool = sorted(self.bibles, key=priority_key)
         return pool[:size]
 
     def search_titles(self, words, limit=8):
@@ -604,6 +630,11 @@ class Library:
             log(f"cover {record_id}: {e}")
         self._covers[record_id] = img
         return img
+
+
+def priority_key(r):
+    """Sort key: prioritized resources first (lowest rank = top), then most used."""
+    return (0, r.rank, -r.use) if r.rank else (1, 0, -r.use)
 
 
 def logosres_id(resource_id, alternates):

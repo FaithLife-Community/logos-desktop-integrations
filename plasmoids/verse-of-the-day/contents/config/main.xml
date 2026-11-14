@@ -10,7 +10,6 @@
     <entry name="bible" type="String"><default></default></entry>
     <!-- {ref} = Logos reference like BibleESV.Ro6.4 -->
     <entry name="customUrl" type="String"><default>logos4:Guide;t=My_Passage_Guide;ref={ref}</default></entry>
-    <entry name="showReference" type="Bool"><default>true</default></entry>
     <entry name="sourceUrl" type="String"><default>https://biblia.com/verseoftheday</default></entry>
     <!-- cache of the last successful fetch, used offline -->
     <entry name="lastImage" type="String"><default></default></entry>
