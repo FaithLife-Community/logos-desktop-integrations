@@ -141,6 +141,7 @@ ColumnLayout {
             }
 
             ProgressRing {
+                visible: row.plan.kind !== "devotional"
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 1.4
                 Layout.preferredHeight: Layout.preferredWidth
                 Layout.alignment: Qt.AlignVCenter

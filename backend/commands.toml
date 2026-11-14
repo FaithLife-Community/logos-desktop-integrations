@@ -11,7 +11,14 @@
 #   ol bdag          open any book in your library by title/abbreviation
 #   otc Ruth 1:1     Text Comparison of your top Bibles
 #   rp [filter]      today's readings from your reading plans
+#   today [filter]   today's entry in your devotionals (prioritized ones first)
+#   ws agape         Bible Word Study          fb moses   Factbook (with Logos's own descriptions)
+#   or [filter]      recently opened books
+#   John 3:16        a bare reference opens in your preferred Bible (set in Logos)
 #   logos [filter]   list commands
+#
+# Meta+Alt+L anywhere: open the Bible reference in the clipboard (a single word goes to
+# Bible Word Study). Change the key in System Settings → Shortcuts → "Look up in Logos".
 
 [aliases]
 # open = "o"
@@ -25,6 +32,10 @@
 # top = "stb"
 # everything = "sll"
 # plans = "rp"
+# wordstudy = "ws"
+# factbook = "fb"
+# recent = "or"
+# devotional = "today"
 # Set one to "" to turn it off.
 
 [settings]
@@ -37,6 +48,12 @@
 # focus = true                # raise Logos after opening a link
 # window_classes = ["logos.exe", "verbum.exe"]
 # logos_data = ""             # …/AppData/Local/Logos if auto-detection fails
+# reference_url = "logosref:Bible.{q}"   # bare references & Meta+Alt+L; logosref = Logos's preferred Bible
+# bare_references = true
+# devotionals = []            # e.g. ["My Utmost for His Highest"]; empty = your prioritized ones
+# devotional_url = "logosres:{logosres};ref=DayOfYear.today"
+# reminders = true            # notify at each reading plan's reminder time (set in Logos)
+# devotional_reminder = ""    # e.g. "07:30" for a daily devotional notification
 
 # ── Your own commands ─────────────────────────────────────────────────────────
 # alias / name / url ({q} = what you type) / hint / encode (default true) / icon

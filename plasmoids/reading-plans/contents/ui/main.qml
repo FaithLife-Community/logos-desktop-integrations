@@ -15,8 +15,8 @@ PlasmoidItem {
     property string error: ""
     property string tab: "today"
 
-    readonly property var todayPlans: plans.filter(p => p.kind === "today")
-    readonly property var anytimePlans: plans.filter(p => p.kind !== "today")
+    readonly property var todayPlans: plans.filter(p => p.kind === "today" || p.kind === "devotional")
+    readonly property var anytimePlans: plans.filter(p => p.kind === "anytime")
     readonly property var shownPlans: (tab === "today" ? todayPlans : anytimePlans)
                                       .slice(0, Plasmoid.configuration.maxPlans)
     readonly property int dueCount: todayPlans.filter(p => p.behind !== null && p.behind >= 0).length

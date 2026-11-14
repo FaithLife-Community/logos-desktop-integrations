@@ -6,7 +6,12 @@ under Wine via [Ou Dedetai](https://github.com/FaithLife-Community/OuDedetai):
 * **KRunner commands**: a Raycast/BibleWorks-style command line for Logos, available in
   KRunner (Alt+Space) and Plasma's launcher search.
 * **Logos Verse of the Day** widget: today's Verse of the Day art. Click it to open the verse in Logos.
-* **Logos Reading Plans** widget: styled after the Reading Plans card on Logos's home page.
+* **Logos Showcase** widget: a shelf of well-rated books you own but haven't read on any
+  device, one per series and author, refreshed daily. Covers lift and tilt as you hover.
+* **Look up in Logos** (Meta+Alt+L): copy a Bible reference anywhere and open it in your
+  preferred Bible. A single word opens Bible Word Study instead.
+* **Reading-plan reminders**: notifications at each plan's reminder time, with a "Read now" button.
+* **Logos Reading Plans** widget: styled after the Reading Plans card on Logos's home page, plus your devotional.
   It has Today/Anytime tabs, covers, streaks, estimated reading times, overdue labels and
   progress rings. Click a plan to open its next reading.
 
@@ -40,6 +45,10 @@ The installer doesn't restart KRunner or Plasma.
 | `otc Ruth 1:1` | Text Comparison of your top Bibles |
 | `opg` `oeg` `obws` `oh` `ltc` `ltcs` | Passage/Exegetical Guide, Bible Word Study, Gospel Harmony, Text Comparisons |
 | `rp` | Today's readings from your reading plans |
+| `today` | Today's entry in your devotionals |
+| `ws agape` · `fb moses` | Bible Word Study · Factbook, with Logos's own descriptions to tell same-named entries apart |
+| `or` | Recently opened books |
+| `John 3:16` | A bare reference opens in your preferred Bible |
 | `logos [filter]` | List commands |
 
 Aliases, picker Bibles and your own URL commands live in `~/.config/logos-plasma/commands.toml`.

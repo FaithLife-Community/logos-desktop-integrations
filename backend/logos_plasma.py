@@ -52,6 +52,7 @@ DEFAULTS = {
         "open": "o", "search": "s", "phrase": "'", "words": ".",
         "library": "ol", "compare": "otc", "help": "logos",
         "lexicon": "lex", "top": "stb", "everything": "sll", "plans": "rp",
+        "wordstudy": "ws", "factbook": "fb", "recent": "or", "devotional": "today",
     },
     "settings": {
         "logos_data": "",            # path to .../AppData/Local/Logos; empty = find Ou Dedetai's
@@ -75,6 +76,16 @@ DEFAULTS = {
         "top_bibles_scope": "Top|DataType=bible|ResourceType=text.monograph.bible|ResultLimit=5|Title=Top%2520Bibles",
         "library_search_url": "logos4:Search;kind=BooksSearch;q={q};in=raw:AllVisible|Title=Your%2520Books",
         "search_top_row": True,      # offer "Top Bibles" as the first row of search pickers
+        "wordstudy_url": "logos4:Guide;t=My_Bible_Word_Study;hw={q}",
+        "factbook_url": "logos4:Factbook;id=ref%3A{key};lens=all",
+        # Opened by the "look up" shortcut and bare references in KRunner. logosref: uses the
+        # preferred Bible set in Logos; use e.g. "logosres:esv;ref=Bible.{q}" for a fixed one.
+        "reference_url": "logosref:Bible.{q}",
+        "bare_references": True,     # typing just "John 3:16" in KRunner offers Logos
+        "devotionals": [],           # titles/abbreviations; empty = your prioritized devotionals
+        "devotional_url": "logosres:{logosres};ref=DayOfYear.today",
+        "reminders": True,           # reading-plan notifications at each plan's reminder time
+        "devotional_reminder": "",   # e.g. "07:30" for a daily devotional notification
     },
 }
 
@@ -223,6 +234,97 @@ def streak_days(completed_dates, today):
         n += 1
         day -= datetime.timedelta(days=1)
     return n
+
+
+_BOOK_ALIASES = {
+    1: "gen ge gn", 2: "exod exo ex", 3: "lev le lv", 4: "num nu nm nb", 5: "deut deu dt de",
+    6: "josh jos", 7: "judg jdg jg", 8: "ruth ru rth", 9: "1sam 1sa 1sm", 10: "2sam 2sa 2sm",
+    11: "1kgs 1ki 1kin", 12: "2kgs 2ki 2kin", 13: "1chr 1ch 1chron", 14: "2chr 2ch 2chron",
+    15: "ezra ezr", 16: "neh ne", 17: "esth est es", 18: "job jb",
+    19: "psalms psalm ps psa pss psm", 20: "prov pro prv pr", 21: "eccl ecc ec qoh",
+    22: "songofsongs songofsolomon song sos canticles ss", 23: "isa is", 24: "jer je jr",
+    25: "lam la", 26: "ezek eze ezk", 27: "dan da dn", 28: "hos ho", 29: "joel jl joe",
+    30: "amos am", 31: "obad ob", 32: "jonah jon jnh", 33: "mic mi", 34: "nah na",
+    35: "hab hb", 36: "zeph zep zp", 37: "hag hg", 38: "zech zec zc", 39: "mal ml",
+    61: "matt mt", 62: "mark mk mrk mar", 63: "luke lk luk", 64: "john jn jhn joh",
+    65: "acts ac act", 66: "rom ro rm", 67: "1cor 1co", 68: "2cor 2co", 69: "gal ga",
+    70: "eph ephes", 71: "phil php pp", 72: "col", 73: "1thess 1th 1thes", 74: "2thess 2th 2thes",
+    75: "1tim 1ti", 76: "2tim 2ti", 77: "titus tit", 78: "phlm phm philem", 79: "heb",
+    80: "jas jm", 81: "1pet 1pe 1pt", 82: "2pet 2pe 2pt", 83: "1jn 1jo 1jhn", 84: "2jn 2jo 2jhn",
+    85: "3jn 3jo 3jhn", 86: "jude jud jd", 87: "rev re rv revelations apocalypse",
+}
+
+
+def _book_lookup():
+    table = {}
+    for num, name in BOOKS.items():
+        table[re.sub(r"\s+", "", name.lower())] = num
+        table[re.sub(r"\s+", "", BOOK_ABBR[num].lower())] = num
+    table["psalms"] = 19
+    for num, aliases in _BOOK_ALIASES.items():
+        for a in aliases.split():
+            table[a] = num
+    return table
+
+
+BOOK_LOOKUP = _book_lookup()
+_ORDINALS = {"i": "1", "ii": "2", "iii": "3", "first": "1", "second": "2", "third": "3",
+             "1st": "1", "2nd": "2", "3rd": "3"}
+_REF_RE = re.compile(
+    r"(?<![\w])((?:(?:[123]|i{1,3}|1st|2nd|3rd|first|second|third)\s*)?[a-z][a-z ]{0,20}?[a-z])\.?\s*"
+    r"(\d{1,3})(?:\s*[:.v]\s*(\d{1,3})(?:\s*[-\u2013\u2014]\s*(\d{1,3})(?:\s*[:.]\s*(\d{1,3}))?)?"
+    r"|\s*[-\u2013\u2014]\s*(\d{1,3}))?(?![\w:])", re.I)
+
+
+def find_references(text):
+    """Bible references in free text → ['John 3:16', '1 Corinthians 13:4-7', …] (in order)."""
+    out = []
+    for m in _REF_RE.finditer(text or ""):
+        raw, ch, v1, v2, v3, ch2 = m.groups()
+        words = raw.split()
+        # try the longest tail of the matched words that names a book ("for God so loved…
+        # (John" → "john"), keeping a leading ordinal ("1 Cor", "First John").
+        num = None
+        for i in range(len(words)):
+            cand = words[i:]
+            if cand and cand[0].lower() in _ORDINALS:
+                cand = [_ORDINALS[cand[0].lower()]] + cand[1:]
+            key = "".join(cand).lower()
+            if key in BOOK_LOOKUP:
+                tail = " ".join(words[i:])
+                # short abbreviations only count when capitalised ("is 5" isn't Isaiah)
+                letters = re.sub(r"[^a-z]", "", key)
+                if len(letters) <= 3 and not tail.lstrip("123 ")[:1].isupper():
+                    continue
+                num = BOOK_LOOKUP[key]
+                break
+        if num is None:
+            continue
+        ref = f"{BOOKS[num]} {ch}"
+        if v1:
+            ref += f":{v1}"
+            if v2:
+                ref += f"-{v2}" + (f":{v3}" if v3 else "")
+        elif ch2:
+            ref += f"-{ch2}"
+        out.append(ref)
+    return out
+
+
+def notify(summary, body="", icon="logos-plasma", actions=(), bus=None, timeout=-1):
+    """Send a desktop notification; returns its id (0 on failure)."""
+    import dbus
+    try:
+        bus = bus or dbus.SessionBus()
+        n = dbus.Interface(bus.get_object("org.freedesktop.Notifications",
+                                          "/org/freedesktop/Notifications"),
+                           "org.freedesktop.Notifications")
+        return int(n.Notify("Logos", 0, icon, summary, body, dbus.Array(actions, signature="s"),
+                            dbus.Dictionary({"desktop-entry": "logos-plasma-lookup"}, signature="sv"),
+                            timeout))
+    except Exception as e:
+        log(f"notification failed: {e}")
+        return 0
 
 
 def format_reference(ref, dash="\u2013"):
@@ -518,14 +620,14 @@ class Library:
                     docs[g] = (title, sessions)
             statuses = c.execute(
                 "SELECT SyncId, ReadSessions, ModifiedDate, SessionsMetadata, "
-                "coalesce(IsArchived, 0) FROM ReadingPlanStatus WHERE IsDeleted = 0 "
+                "coalesce(IsArchived, 0), NotificationTime FROM ReadingPlanStatus WHERE IsDeleted = 0 "
                 "ORDER BY ModifiedDate DESC").fetchall()
         # Plans you've used (most recent first), then plans never started (no status row).
         seen = {row[0] for row in statuses}
-        rows = [r[:4] for r in statuses if not r[4]]
-        rows += [(g, None, "", None) for g in docs if g not in seen]
+        rows = [r[:4] + (r[5],) for r in statuses if not r[4]]
+        rows += [(g, None, "", None, None) for g in docs if g not in seen]
         out = []
-        for sync_id, read, modified, meta in rows:
+        for sync_id, read, modified, meta, notify_time in rows:
             if sync_id not in docs:
                 continue
             title, sessions = docs[sync_id]
@@ -592,7 +694,168 @@ class Library:
                 "summary": ", ".join(shorts) if shorts else (f"{n} reading" if n == 1 else f"{n} readings"),
                 "sessionTitle": sess.get("title", ""),
                 "coverResource": next((r["resourceId"] for r in readings if r["resourceId"]), ""),
+                "notificationTime": notify_time or "",
                 "readings": readings})
+        return out
+
+    # Devotionals, Factbook, history ---------------------------------------------
+    def devotionals(self, names=()):
+        rows = self.db().execute("""
+            SELECT r.RecordId, r.ResourceId, coalesce(nullif(r.UserAbbreviatedTitle, ''), r.AbbreviatedTitle),
+                   coalesce(nullif(r.UserTitle, ''), r.Title), r.UseCount,
+                   (SELECT group_concat(AlternateResourceId, ' ') FROM AlternateResourceIds a
+                    WHERE a.RecordId = r.RecordId)
+            FROM Records r WHERE r.Type = 'lbx.calendar-devotional' AND r.Availability >= 1""").fetchall()
+        ranks, _ = self._load_priorities()
+        devs = [Resource(rec, rid, logosres_id(rid, alts), abbr or "", title, use or 0, ranks.get(rid, 0))
+                for rec, rid, abbr, title, use, alts in rows]
+        devs.sort(key=priority_key)
+        if names:
+            wanted = [n.lower() for n in names]
+            return [d for w in wanted for d in devs if w in (d.title.lower(), d.abbr.lower())]
+        return devs
+
+    def default_devotionals(self, names=()):
+        """The devotionals to feature: configured ones, else prioritized, else the most used."""
+        devs = self.devotionals(names)
+        if names:
+            return devs
+        pri = [d for d in devs if d.rank]
+        return pri[:2] if pri else [d for d in devs[:1] if d.use]
+
+    def factbook(self, text, limit=8):
+        path = self.data_dir / "AutoComplete" / "AutoComplete.db" if self.data_dir else None
+        words = [w for w in re.findall(r"\w+", text.lower()) if w]
+        if not path or not path.exists() or not words:
+            return []
+        first, rest = words[0], words[1:]
+        with ro_connect(path) as c:
+            rows = c.execute("""
+                SELECT t.Reference, ik.IconKind, l.LabelText, l.IsPrimary,
+                       (SELECT Description FROM Descriptions d WHERE d.TermId = t.TermId AND d.LanguageId = 1),
+                       (SELECT LabelText FROM Labels p WHERE p.TermId = t.TermId AND p.IsPrimary = 1 AND p.LanguageId = 1)
+                FROM LabelWords w JOIN Labels l ON l.LabelId = w.LabelId JOIN Terms t ON t.TermId = l.TermId
+                LEFT JOIN IconKinds ik ON ik.IconKindId = t.IconKindId
+                WHERE w.LanguageId = 1 AND w.FoldedText >= ? AND w.FoldedText < ?
+                LIMIT 400""", (first, first + "\uffff")).fetchall()
+        seen, out = set(), []
+        for ref, kind, label, primary, desc, primary_label in rows:
+            low = label.lower()
+            if ref in seen or not all(w in low for w in rest):
+                continue
+            seen.add(ref)
+            name = primary_label or label
+            exact = name.lower() == text.lower().strip() or low == text.lower().strip()
+            out.append({"key": ref, "kind": kind or "", "label": name,
+                        "alias": "" if primary else label, "description": desc or "",
+                        "score": (not exact, not ref.startswith("bk.#"), ref.startswith("bio."), len(name))})
+        out.sort(key=lambda r: r["score"])
+        return out[:limit]
+
+    def recent(self, open_url, limit=10):
+        path = self.data_dir / "HistoryManager" / "history.db" if self.data_dir else None
+        if not path or not path.exists():
+            return []
+        with ro_connect(path) as c:
+            rows = c.execute("SELECT Title, Subtitle, Bookmark FROM History WHERE IsDeleted = 0 "
+                             "AND Bookmark LIKE 'Resource|%' ORDER BY LastVisited DESC LIMIT 300").fetchall()
+        seen, out = set(), []
+        for title, subtitle, bm in rows:
+            fields = dict(kv.split("=", 1) for kv in bm.split("|")[1:] if "=" in kv)
+            rid = fields.get("Id", "")
+            if not rid or rid in seen:
+                continue
+            seen.add(rid)
+            lres = self.logosres_for(rid)
+            ref = urllib.parse.unquote(fields.get("Reference", ""))
+            hw = urllib.parse.unquote(fields.get("Headword", ""))
+            if ref.startswith("bible") and format_reference(ref):
+                url = open_url.replace("{logosres}", lres).replace(
+                    "{q}", encode(format_reference(ref).replace("\u2013", "-"), ":,."))
+            elif hw:
+                url = f"logosres:{lres};hw={encode(hw, '')}"
+            else:
+                url = f"logosres:{lres}"
+            out.append({"title": title, "subtitle": subtitle or "", "url": url, "resourceId": rid})
+            if len(out) >= limit:
+                break
+        return out
+
+    def showcase(self, count=12, seed=None, min_ratings=15):
+        """Well-rated books you own but haven't read, one per series/author, rotating daily.
+
+        "Unread" uses Logos's synced reading progress (ReadingProgressManager), so books you
+        read on other devices are excluded, plus local use counts/last-accessed."""
+        import random
+        read = set()
+        rp = self.data_dir / "ReadingProgressManager" / "readingprogressmanager.db"
+        if rp.exists():
+            with ro_connect(rp) as c:
+                read.update(r for (r,) in c.execute(
+                    "SELECT ResourceId FROM ResourceReadingProgress WHERE IsDeleted = 0"))
+                read.update(r for (r,) in c.execute(
+                    "SELECT ResourceId FROM ReadingStatus WHERE PercentageRead > 0"))
+        skip_types = ("text.monograph.bible", "text.monograph.lexicon", "text.monograph.dictionary",
+                      "text.monograph.encyclopedia", "text.monograph.ancient-manuscript",
+                      "text.monograph.ancient-manuscript.translation", "text.monograph.courseware",
+                      "text.monograph.grammar", "text.monograph.study.bible", "text.monograph.workbook",
+                      "text.monograph.service-book", "text.monograph.cross-references.bible")
+        rows = self.db().execute(f"""
+            SELECT r.RecordId, r.ResourceId, r.Title, r.Authors, r.Series, r.Type,
+                   r.CommunityRating, r.CommunityRatingCount,
+                   (SELECT group_concat(AlternateResourceId, ' ') FROM AlternateResourceIds a
+                    WHERE a.RecordId = r.RecordId)
+            FROM Records r JOIN Images i ON i.RecordId = r.RecordId
+            WHERE r.Availability >= 1 AND r.Type LIKE 'text.monograph%'
+              AND r.Type NOT IN ({",".join("?" * len(skip_types))})
+              AND r.UseCount = 0 AND r.LastAccessed IS NULL
+              AND r.CommunityRatingCount >= ? AND i.Image IS NOT NULL""",
+            (*skip_types, min_ratings)).fetchall()
+        # Bayesian average: books with few ratings are pulled towards the library's mean rating.
+        prior = sum(r[6] * r[7] for r in rows) / max(1, sum(r[7] for r in rows))
+        weight = 30
+        scored = []
+        for rec, rid, title, authors, series, typ, rating, n, alts in rows:
+            if rid in read:
+                continue
+            score = (rating * n + prior * weight) / (n + weight)
+            scored.append((score, rec, rid, title, authors or "", series or "", typ, rating, n, alts))
+        scored.sort(reverse=True)
+        # Diversity: one per series and per first author; commentaries at most a third.
+        pool, series_seen, authors_seen, commentaries = [], set(), set(), 0
+        for item in scored:
+            _, _, _, _, authors, series, typ, *_ = item
+            author = re.split(r"[\t;]", authors)[0].split(",")[0].strip().lower()
+            if (series and series.lower() in series_seen) or (author and author in authors_seen):
+                continue
+            if typ.endswith("commentary.bible") and commentaries >= max(2, count // 3) * 4:
+                continue
+            series_seen.add(series.lower())
+            authors_seen.add(author)
+            commentaries += typ.endswith("commentary.bible")
+            pool.append(item)
+            if len(pool) >= count * 3:
+                break
+        rng = random.Random(seed if seed is not None else datetime.date.today().isoformat())
+        picks, n_comm = [], 0
+        for item in rng.sample(pool, len(pool)):
+            if item[6].endswith("commentary.bible"):
+                if n_comm >= max(1, count // 3):
+                    continue
+                n_comm += 1
+            picks.append(item)
+            if len(picks) >= count:
+                break
+        picks.sort(reverse=True)
+        out = []
+        for score, rec, rid, title, authors, series, typ, rating, n, alts in picks:
+            names = [" ".join(reversed([x.strip() for x in a.split(",", 1)])) if "," in a else a.strip()
+                     for a in re.split(r"[\t;]", authors) if a.strip()]
+            byline = names[0] if len(names) == 1 else (f"{names[0]} & {names[1]}" if len(names) == 2
+                                                      else f"{names[0]} et al.") if names else ""
+            out.append({"title": title, "authors": byline, "series": series,
+                        "rating": round(rating, 1), "ratings": n, "resourceId": rid,
+                        "url": f"logosres:{logosres_id(rid, alts)}", "cover": self.cover_file(rid)})
         return out
 
     def cover_file(self, resource_id):
@@ -734,6 +997,10 @@ def build_commands(cfg, lib):
         ("lexicon", "Lexicon", "a Greek or Hebrew word"), ("top", "Search Top Bibles", "words"),
         ("everything", "Search your library", "words"),
         ("plans", "Reading plans", "optional filter"),
+        ("wordstudy", "Bible Word Study", "a word or lemma"),
+        ("factbook", "Factbook", "a person, place, topic…"),
+        ("recent", "Recently opened", "optional filter"),
+        ("devotional", "Today's devotional", "optional filter"),
     ]
     for kind, name, hint in builtin:
         add(Cmd(a.get(kind, ""), kind, name, hint))
@@ -832,6 +1099,7 @@ def main_service():
             self.token = ""
             self.focus_deadline = 0
             self.focus_script = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "logos-plasma-focus.js"
+            self.setup_notifications()
             self.refresh()
 
         def refresh(self):
@@ -850,7 +1118,7 @@ def main_service():
         def Config(self):
             return dbus.Dictionary({
                 "MatchRegex": r"^\s*(?:['.]\S|\S+\s+\S|(?:%s)\s*$)" % "|".join(
-                    re.escape(a) for a in (self.cfg.aliases.get("help"), self.cfg.aliases.get("plans")) if a),
+                    re.escape(a) for a in (self.cfg.aliases.get(k) for k in ("help", "plans", "recent", "devotional")) if a),
                 "MinLetterCount": dbus.Int32(2),
             }, signature="sv")
 
@@ -903,7 +1171,7 @@ def main_service():
         def match(self, query):
             cmd, arg = split_query(query, self.cmds)
             if cmd is None:
-                return []
+                return self.bare_reference_rows(query)
             s = self.cfg.settings
             safe = s["safe_chars"]
             picker = lambda: self.lib.picker(s["picker_bibles"], s["picker_order"], s["picker_size"])
@@ -912,11 +1180,30 @@ def main_service():
                 return self.help_rows(arg)
             if cmd.kind == "plans":
                 return self.plan_rows(arg)
-            if not arg and cmd.kind == "plans":
-                return self.plan_rows("")
+            if cmd.kind == "recent":
+                return self.recent_rows(arg)
+            if cmd.kind == "devotional":
+                return self.devotional_rows(arg)
             if not arg:
                 return [("", f"{cmd.name}: type {cmd.hint}", "logos-plasma", LOW, 0.5,
                          props(subtext=f"{cmd.alias} <{cmd.hint}>", actions=NO_ACTIONS))]
+
+            if cmd.kind == "wordstudy":
+                url = s["wordstudy_url"].replace("{q}", encode(arg, ""))
+                return [(url, f"Bible Word Study: {arg}", "logos-plasma", HIGHEST, 1.0,
+                         props(subtext=url))]
+
+            if cmd.kind == "factbook":
+                rows = []
+                for i, f in enumerate(self.lib.factbook(arg)):
+                    url = s["factbook_url"].replace("{key}", encode(f["key"], ""))
+                    sub = f["description"] or f["kind"]
+                    if f["alias"]:
+                        sub = f"also “{f['alias']}” · {sub}"
+                    rows.append((url, f["label"], FACTBOOK_ICONS.get(f["kind"], "help-about"),
+                                 HIGHEST, 1.0 - i * 0.01, props(subtext=sub)))
+                return rows or [("", f"Factbook: nothing found for “{arg}”", "help-about", LOW, 0.5,
+                                 props(actions=NO_ACTIONS))]
 
             if cmd.kind == "url":
                 q = encode(arg, cmd.extra.get("safe_chars", safe)) if cmd.extra.get("encode", True) else arg
@@ -998,6 +1285,109 @@ def main_service():
                              HIGHEST, 1.0 - i * 0.01, p))
             return rows
 
+        def bare_reference_rows(self, query):
+            s = self.cfg.settings
+            if not s["bare_references"]:
+                return []
+            q = query.strip()
+            refs = find_references(q)
+            # only when the query is essentially just references, not a sentence
+            if not refs or len(re.sub(r"[\W\d_]", "", q)) > len(" ".join(refs)) + 4:
+                return []
+            rows = []
+            for i, ref in enumerate(refs[:5]):
+                url = s["reference_url"].replace("{q}", encode(ref, ":,."))
+                rows.append((url, f"Open {ref} in Logos", "logos-plasma", HIGHEST, 0.9 - i * 0.01,
+                             props(subtext="Your preferred Bible" if url.startswith("logosref:") else url)))
+            return rows
+
+        def recent_rows(self, flt):
+            rows = []
+            items = self.lib.recent(self.cfg.settings["open_url"], limit=30)
+            items = [r for r in items if flt.lower() in (r["title"] + r["subtitle"]).lower()][:10]
+            for i, r in enumerate(items):
+                p = props(subtext=r["subtitle"] or "Recently opened")
+                if self.cfg.settings["covers"]:
+                    icon_props(p, self.lib.cover_for(r["resourceId"]))
+                rows.append((r["url"], r["title"], "document-open-recent", HIGHEST, 1.0 - i * 0.01, p))
+            return rows
+
+        def devotional_rows(self, flt):
+            s = self.cfg.settings
+            devs = self.lib.devotionals(s["devotionals"]) if not flt else [
+                d for d in self.lib.devotionals() if flt.lower() in (d.title + " " + d.abbr).lower()]
+            featured = {d.resource_id for d in self.lib.default_devotionals(s["devotionals"])}
+            if not flt:
+                devs = sorted(devs, key=lambda d: d.resource_id not in featured)
+            rows = []
+            for i, d in enumerate(devs[:8]):
+                url = s["devotional_url"].replace("{logosres}", d.logosres)
+                p = props(subtext="Today's reading" + (" · prioritized" if d.rank else ""))
+                if s["covers"]:
+                    icon_props(p, self.lib.cover(d.record_id))
+                rows.append((url, d.title, "view-calendar-day", HIGHEST, 1.0 - i * 0.01, p))
+            return rows
+
+        # Reminders ------------------------------------------------------------
+        def setup_notifications(self):
+            self.notif_actions = {}
+            self.bus.add_signal_receiver(self.on_notification_action, "ActionInvoked",
+                                         "org.freedesktop.Notifications")
+            self.bus.add_signal_receiver(self.on_notification_closed, "NotificationClosed",
+                                         "org.freedesktop.Notifications")
+
+        def on_notification_action(self, nid, action):
+            url = self.notif_actions.get(int(nid), {}).get(str(action))
+            if url:
+                self.launch(url)
+
+        def on_notification_closed(self, nid, reason):
+            self.notif_actions.pop(int(nid), None)
+
+        @dbus.service.method(INTERNAL_IFACE)
+        def CheckReminders(self):
+            try:
+                self.check_reminders()
+            except Exception as e:
+                log(f"reminders: {e!r}")
+
+        def check_reminders(self):
+            import datetime as dt
+            s = self.cfg.settings
+            self.refresh()
+            state_path = Path(os.environ.get("XDG_STATE_HOME", HOME / ".local/state")) / "logos-plasma" / "reminders.json"
+            try:
+                state = json.loads(state_path.read_text())
+            except (OSError, ValueError):
+                state = {}
+            now = dt.datetime.now()
+            today = now.date().isoformat()
+            due = []
+            if s["reminders"]:
+                for plan in self.lib.reading_plans(s["open_url"]):
+                    t = plan.get("notificationTime")
+                    if (plan["kind"] != "today" or not t or plan["behind"] is None
+                            or plan["behind"] < 0 or state.get(plan["title"]) == today):
+                        continue
+                    if now.strftime("%H:%M") >= t:
+                        due.append((plan["title"], plan["summary"] + (f" · {plan['dueLabel']}" if plan["dueLabel"] else ""),
+                                    plan["readings"][0]["url"] if plan["readings"] else ""))
+            dtime = s["devotional_reminder"]
+            if dtime and now.strftime("%H:%M") >= dtime and state.get("__devotional__") != today:
+                for d in self.lib.default_devotionals(s["devotionals"])[:1]:
+                    due.append(("__devotional__", d.title, s["devotional_url"].replace("{logosres}", d.logosres)))
+            for title, body, url in due:
+                summary = "Today's devotional" if title == "__devotional__" else title
+                nid = notify(summary, body, icon="view-calendar-day",
+                             actions=["default", "Read now", "open", "Read now"] if url else [],
+                             bus=self.bus, timeout=0)
+                if nid:
+                    self.notif_actions[nid] = {"default": url, "open": url}
+                    state[title] = today
+            if due:
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                state_path.write_text(json.dumps(state))
+
         def plan_rows(self, flt):
             rows = []
             plans = self.lib.reading_plans(self.cfg.settings["open_url"])
@@ -1059,7 +1449,8 @@ def main_service():
                 ).launch_uris([url], ctx)
             if s["focus"]:
                 self.focus_deadline = time.monotonic() + 90
-                GLib.timeout_add(350, self.focus)  # after KRunner has closed
+                GLib.timeout_add(350, self.focus)   # after KRunner has closed
+                GLib.timeout_add(1800, self.focus)  # again once Logos has handled the link
 
         def focus(self):
             """Ask KWin to raise the topmost Logos window (async; KWin calls back FocusResult)."""
@@ -1075,6 +1466,58 @@ def main_service():
     DBusGMainLoop(set_as_default=True)
     Runner(dbus.SessionBus())
     GLib.MainLoop().run()
+
+
+FACTBOOK_ICONS = {
+    "Man": "im-user", "Woman": "im-user", "SupernaturalBeing": "starred-symbolic",
+    "PeopleGroup": "system-users", "City": "mark-location", "OtherPlace": "mark-location",
+    "NaturalPlace": "mark-location", "ManMadePlace": "mark-location", "Thing": "package",
+    "ClassOfThing": "package", "Event": "view-calendar", "PreachingTheme": "view-media-lyrics",
+    "Topic": "tag", "WordSense": "accessories-dictionary", "Culture": "applications-education",
+}
+
+
+def read_clipboard(selection=False):
+    """Clipboard (or primary selection) text, via Klipper or wl-paste/xclip."""
+    import subprocess
+    cmds = ([["wl-paste", "--primary", "--no-newline"], ["xclip", "-o", "-selection", "primary"]]
+            if selection else [["wl-paste", "--no-newline"], ["xclip", "-o", "-selection", "clipboard"]])
+    if not selection:
+        try:
+            import dbus
+            text = dbus.SessionBus().get_object("org.kde.klipper", "/klipper").getClipboardContents(
+                dbus_interface="org.kde.klipper.klipper")
+            if text:
+                return str(text)
+        except Exception:
+            pass
+    for cmd in cmds:
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=3).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return ""
+
+
+def cli_lookup(selection=False):
+    """Global-shortcut action: open the Bible reference in the clipboard (or selection) in
+    Logos; a single word goes to Bible Word Study instead."""
+    cfg = Config()
+    cfg.maybe_reload()
+    s = cfg.settings
+    text = read_clipboard(selection).strip()
+    refs = find_references(text)
+    if refs:
+        cli_open(s["reference_url"].replace("{q}", encode(refs[0], ":,.")))
+        if len(refs) > 1:
+            notify(f"Opened {refs[0]}", "Also in the clipboard: " + ", ".join(refs[1:6]))
+        return
+    words = text.split()
+    if 0 < len(words) <= 2 and len(text) <= 40:
+        cli_open(s["wordstudy_url"].replace("{q}", encode(text, "")))
+        return
+    notify("No Bible reference found",
+           ("In: “" + text[:80] + ("…”" if len(text) > 80 else "”")) if text else "The clipboard is empty.")
 
 
 def plan_status(plan):
@@ -1099,6 +1542,14 @@ def cli_reading_plans():
     plans = lib.reading_plans(cfg.settings["open_url"])
     for p in plans:
         p["status"] = plan_status(p)
+    s = cfg.settings
+    for d in lib.default_devotionals(s["devotionals"]):
+        plans.insert(0, {
+            "title": d.title, "kind": "devotional", "summary": "Today's reading", "dueLabel": "",
+            "streak": 0, "minutes": None, "progress": 0, "behind": None, "session": 0, "total": 0,
+            "status": "Devotional", "sessionTitle": "", "lastActivity": "", "coverResource": d.resource_id,
+            "readings": [{"label": d.title, "short": None, "resourceId": d.resource_id,
+                          "url": s["devotional_url"].replace("{logosres}", d.logosres)}]})
         try:
             p["cover"] = lib.cover_file(p["coverResource"])
         except Exception as e:
@@ -1207,6 +1658,20 @@ if __name__ == "__main__":
         focus_test()
     elif "--reading-plans" in sys.argv:
         cli_reading_plans()
+    elif "--showcase" in sys.argv:
+        cfg = Config()
+        cfg.maybe_reload()
+        lib = Library()
+        lib.refresh(cfg.settings["logos_data"])
+        i = sys.argv.index("--showcase")
+        count = int(sys.argv[i + 1]) if len(sys.argv) > i + 1 and sys.argv[i + 1].isdigit() else 12
+        seed = time.time() if "--shuffle" in sys.argv else None
+        print(json.dumps(lib.showcase(count, seed), ensure_ascii=False))
+    elif "--lookup" in sys.argv:
+        cli_lookup(selection="--selection" in sys.argv)
+    elif "--check-reminders" in sys.argv:
+        import dbus
+        dbus.SessionBus().get_object(BUS_NAME, OBJ_PATH).CheckReminders(dbus_interface=INTERNAL_IFACE)
     elif "--focus" in sys.argv:
         import dbus
         dbus.SessionBus().get_object(BUS_NAME, OBJ_PATH).Focus(dbus_interface=INTERNAL_IFACE)

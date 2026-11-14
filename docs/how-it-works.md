@@ -32,7 +32,11 @@ content stays in Logos's own encrypted resource files, which this project never 
 |---|---|
 | `Data/<user>/LibraryCatalog/catalog.db` | Your books: titles, abbreviations, resource IDs, link IDs, usage counts, cover thumbnails |
 | `Documents/<user>/KeyLinkManager/KeyLinkSyncManager.db` | Your **Prioritize** order: top Bibles, lexicons |
-| `Documents/<user>/Documents/ReadingPlan/ReadingPlan.db` | Reading plan schedules and which sessions you've completed |
+| `Documents/<user>/Documents/ReadingPlan/ReadingPlan.db` | Reading plan schedules, completed sessions, reminder times |
+| `Data/<user>/KeyLinkManager/keylinkmanager.db` | The Prioritize order Logos currently uses (lower rank = higher) |
+| `Data/<user>/ReadingProgressManager/readingprogressmanager.db` | Synced reading progress, so the showcase skips books read on any device |
+| `Data/<user>/AutoComplete/AutoComplete.db` | Factbook names, aliases and descriptions for `fb` |
+| `Data/<user>/HistoryManager/history.db` | Recently opened books for `or` |
 
 The schemas aren't documented and may change with Logos updates. The code reads them
 defensively and degrades gracefully.
@@ -59,3 +63,19 @@ The widget shows the same details as Logos's own card:
   estimates instead. Bible readings use verses ÷ 10.4 per minute; book readings use
   text-range length ÷ 1475 per minute. Both rates are calibrated against Logos's own
   estimates. Readings spanning non-adjacent chapters can't be measured, so they show no time.
+
+## Showcase
+
+Candidates are monographs you own that have a cover and at least 15 community ratings, and
+that you haven't opened on any device: no synced reading progress, no local use count. They're
+ranked by a Bayesian average, which pulls books with few ratings towards your library's mean,
+so a 5.0 from two readers doesn't beat 4.4 from four hundred. The shelf takes at most one book
+per series and per first author, and no more than a third commentaries. It's a daily shuffle
+of the top 36.
+
+## Reminders
+
+A systemd user timer runs `logos_plasma.py --check-reminders` every five minutes. The runner
+service sends one notification per plan per day, once the plan's reminder time (set in Logos)
+has passed and its next session is due. The service handles the notification's "Read now"
+button. Which plans have been reminded is stored in `~/.local/state/logos-plasma/reminders.json`.

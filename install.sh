@@ -72,8 +72,55 @@ pkill -f "$data/logos-plasma/logos_plasma.py" 2>/dev/null || true
 kwriteconfig6 --file krunnerrc --group Plugins --key logos-plasmaEnabled --notify false
 kwriteconfig6 --file krunnerrc --group Plugins --key logos-plasmaEnabled --notify true
 
+# ── "Look up in Logos" global shortcut (Meta+Alt+L) ─────────────────────────
+# Opens the Bible reference in the clipboard in your preferred Bible (a single word goes to
+# Bible Word Study). Change the key in System Settings → Shortcuts → "Look up in Logos".
+install -Dm644 /dev/stdin "$data/applications/logos-plasma-lookup.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Look up in Logos
+Comment=Open the Bible reference in the clipboard in Logos
+Icon=logos-plasma
+Exec=/usr/bin/python3 $data/logos-plasma/logos_plasma.py --lookup
+NoDisplay=false
+Categories=Education;
+X-KDE-Shortcuts=Meta+Alt+L
+Actions=selection;
+[Desktop Action selection]
+Name=Look up selected text in Logos
+Exec=/usr/bin/python3 $data/logos-plasma/logos_plasma.py --lookup --selection
+EOF
+if ! grep -q 'logos-plasma-lookup.desktop' "$conf/kglobalshortcutsrc" 2>/dev/null; then
+    kwriteconfig6 --file kglobalshortcutsrc --group services --group logos-plasma-lookup.desktop \
+        --key _launch "Meta+Alt+L" || true
+fi
+kbuildsycoca6 >/dev/null 2>&1 || true
+
+# ── Reading-plan reminders (systemd user timer, every 5 minutes) ──────────────
+install -Dm644 /dev/stdin "$conf/systemd/user/logos-plasma-reminders.service" <<EOF
+[Unit]
+Description=Logos reading-plan reminders
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 $data/logos-plasma/logos_plasma.py --check-reminders
+EOF
+install -Dm644 /dev/stdin "$conf/systemd/user/logos-plasma-reminders.timer" <<EOF
+[Unit]
+Description=Check Logos reading-plan reminders
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+EOF
+systemctl --user daemon-reload && systemctl --user enable --now logos-plasma-reminders.timer >/dev/null 2>&1 ||
+    echo "Note: couldn't enable the reminders timer (systemctl --user)." >&2
+
 # ── Widgets ──────────────────────────────────────────────────────────────────
-for w in verse-of-the-day reading-plans; do
+for w in verse-of-the-day reading-plans showcase; do
     tmp=$(mktemp -d)
     cp -r "$here/plasmoids/$w/." "$tmp/"
     cp "$here/plasmoids/shared/Backend.qml" "$tmp/contents/ui/Backend.qml"
@@ -86,7 +133,8 @@ done
 cat <<'EOF'
 
 Done.
-  KRunner (Alt+Space):  o John 3:16 · s grace · rp · logos
+  KRunner (Alt+Space):  John 3:16 · o John 3:16 · s grace · fb moses · today · rp · logos
+  Copy a reference anywhere, then Meta+Alt+L to open it in Logos (may need a re-login the first time).
   Widgets: right-click the desktop or panel → Add Widgets → search "Logos".
   If an updated widget still looks old: systemctl --user restart plasma-plasmashell
 EOF
