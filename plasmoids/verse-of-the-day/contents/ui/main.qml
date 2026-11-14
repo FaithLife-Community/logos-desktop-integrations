@@ -21,9 +21,9 @@ PlasmoidItem {
     function targetUrl() {
         switch (cfg.clickAction) {
         case "passageGuide":
-            return "logos4:Guide;t=My_Passage_Guide;ref=" + logosRef
+            return "logos4:Guide;t=Passage%20Guide;ref=" + logosRef
         case "exegeticalGuide":
-            return "logos4:Guide;t=My_Exegetical_Guide;ref=" + logosRef
+            return "logos4:Guide;t=Exegetical%20Guide;ref=" + logosRef
         case "custom":
             return cfg.customUrl.replace("{ref}", logosRef)
         default:
@@ -107,7 +107,7 @@ PlasmoidItem {
         PlasmaCore.Action {
             text: i18n("Open Passage Guide")
             icon.name: "view-list-details"
-            onTriggered: backend.openUrl("logos4:Guide;t=My_Passage_Guide;ref=" + root.logosRef)
+            onTriggered: backend.openUrl("logos4:Guide;t=Passage%20Guide;ref=" + root.logosRef)
         },
         PlasmaCore.Action {
             text: i18n("Open on biblia.com")

@@ -6,7 +6,7 @@ Logos understands `logos4:` and `logosres:` URLs; they're the same links behind 
 own **Copy location** and `ref.ly` links. For example:
 
     logosres:esv;ref=BibleESV.John 3:16
-    logos4:Guide;t=My_Passage_Guide;ref=BibleESV.Ro6.4
+    logos4:Guide;t=Passage%20Guide;ref=BibleESV.Ro6.4
     logos4:Search;kind=MorphSearch;q=grace;in=raw:Single|ResourceId=LLS:1.0.710
 
 Ou Dedetai registers a desktop handler for `logos4:` (and `libronixdls:`). The backend reads

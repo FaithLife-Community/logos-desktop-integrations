@@ -64,19 +64,19 @@
 alias = "opg"
 name = "Passage Guide"
 hint = "a passage"
-url = 'logos4:Guide;t=My_Passage_Guide;ref=BibleESV.{q}'
+url = 'logos4:Guide;t=Passage%20Guide;ref=BibleESV.{q}'
 
 [[command]]
 alias = "oeg"
 name = "Exegetical Guide"
 hint = "a passage"
-url = 'logos4:Guide;t=My_Exegetical_Guide;ref=BibleESV.{q}'
+url = 'logos4:Guide;t=Exegetical%20Guide;ref=BibleESV.{q}'
 
 [[command]]
 alias = "obws"
 name = "Bible Word Study"
 hint = "a word or lemma"
-url = 'logos4:Guide;t=My_Bible_Word_Study;hw={q}'
+url = 'logos4:Guide;t=Bible%20Word%20Study;hw={q}'
 
 [[command]]
 alias = "oh"

@@ -42,6 +42,14 @@ else
     cp "$here/backend/commands.toml" "$conf/logos-plasma/commands.toml.new"
     echo "Kept your commands.toml; the latest default is beside it as commands.toml.new"
 fi
+# Earlier defaults used another user's custom guide names (My_Passage_Guide, …), which
+# show "unable to load guide". Switch them to Logos's built-in guides.
+if grep -q 't=My_\(Passage_Guide\|Exegetical_Guide\|Bible_Word_Study\)' "$conf/logos-plasma/commands.toml"; then
+    cp "$conf/logos-plasma/commands.toml" "$conf/logos-plasma/commands.toml.bak"
+    sed -i 's/t=My_Passage_Guide/t=Passage%20Guide/g; s/t=My_Exegetical_Guide/t=Exegetical%20Guide/g; s/t=My_Bible_Word_Study/t=Bible%20Word%20Study/g' \
+        "$conf/logos-plasma/commands.toml"
+    echo "Updated guide links in commands.toml to Logos's built-in guides (backup: commands.toml.bak)"
+fi
 
 # ── KRunner runner ───────────────────────────────────────────────────────────
 install -Dm644 "$here/krunner/logos-plasma.desktop" "$data/krunner/dbusplugins/logos-plasma.desktop"

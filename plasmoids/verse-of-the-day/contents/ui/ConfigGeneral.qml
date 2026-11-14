@@ -43,7 +43,7 @@ KCM.SimpleKCM {
             id: customField
             Kirigami.FormData.label: i18n("Custom URL:")
             enabled: actionBox.currentValue === "custom"
-            placeholderText: "logos4:Guide;t=My_Passage_Guide;ref={ref}"
+            placeholderText: "logos4:Guide;t=Passage%20Guide;ref={ref}"
         }
         QQC2.Label {
             text: i18n("{ref} is replaced with the verse, e.g. BibleESV.Ro6.4")

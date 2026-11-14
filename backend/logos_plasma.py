@@ -76,7 +76,7 @@ DEFAULTS = {
         "top_bibles_scope": "Top|DataType=bible|ResourceType=text.monograph.bible|ResultLimit=5|Title=Top%2520Bibles",
         "library_search_url": "logos4:Search;kind=BooksSearch;q={q};in=raw:AllVisible|Title=Your%2520Books",
         "search_top_row": True,      # offer "Top Bibles" as the first row of search pickers
-        "wordstudy_url": "logos4:Guide;t=My_Bible_Word_Study;hw={q}",
+        "wordstudy_url": "logos4:Guide;t=Bible%20Word%20Study;hw={q}",
         "factbook_url": "logos4:Factbook;id=ref%3A{key};lens=all",
         # Opened by the "look up" shortcut and bare references in KRunner. logosref: uses the
         # preferred Bible set in Logos; use e.g. "logosres:esv;ref=Bible.{q}" for a fixed one.
