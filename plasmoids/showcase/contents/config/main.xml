@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <!-- "library": unread, well-rated books · "sermon": your commentaries for your sermon passage -->
+    <entry name="shelf" type="String"><default>library</default></entry>
+    <!-- the shelf shows as many whole rows as fit, up to this many books -->
+    <entry name="bookCount" type="Int"><default>48</default></entry>
+    <!-- books you've marked as read ("I've read this") -->
+    <entry name="hiddenBooks" type="StringList"><default></default></entry>
+    <entry name="tilt" type="Bool"><default>true</default></entry>
+  </group>
+</kcfg>

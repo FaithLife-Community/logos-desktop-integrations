@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <!-- bible | passageGuide | exegeticalGuide | custom -->
+    <entry name="clickAction" type="String"><default>bible</default></entry>
+    <!-- logosres id of the Bible to open, e.g. "lgcystndrdbblsb"; empty = the site's (ESV) -->
+    <entry name="bible" type="String"><default></default></entry>
+    <!-- {ref} = Logos reference like BibleESV.Ro6.4 -->
+    <entry name="customUrl" type="String"><default>logos4:Guide;t=Passage%20Guide;ref={ref}</default></entry>
+    <!-- The art has the reference printed along the bottom; optionally crop it off -->
+    <entry name="cropFooter" type="Bool"><default>false</default></entry>
+    <entry name="footerPercent" type="Int"><default>10</default></entry>
+    <entry name="sourceUrl" type="String"><default>https://biblia.com/verseoftheday</default></entry>
+    <!-- cache of the last successful fetch, used offline -->
+    <entry name="lastImage" type="String"><default></default></entry>
+    <entry name="lastReference" type="String"><default></default></entry>
+    <entry name="lastText" type="String"><default></default></entry>
+    <entry name="lastLogosUrl" type="String"><default></default></entry>
+    <entry name="lastFetchedDate" type="String"><default></default></entry>
+  </group>
+</kcfg>

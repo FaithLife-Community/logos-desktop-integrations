@@ -1,0 +1,15 @@
+{
+    "KPlugin": {
+        "Id": "io.github.FaithlifeCommunity.LogosReadingPlans",
+        "Name": "Logos Reading Plans",
+        "Description": "Today's readings from your Logos reading plans; click a reading to open it in Logos",
+        "Icon": "view-calendar-day",
+        "Category": "Miscellaneous",
+        "License": "GPL-3.0-or-later",
+        "Version": "0.1.0",
+        "Website": "https://github.com/FaithLife-Community/logos-plasma-integrations",
+        "Authors": [{ "Name": "FaithLife Community" }]
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
