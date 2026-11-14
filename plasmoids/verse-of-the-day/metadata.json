@@ -7,7 +7,7 @@
         "Category": "Miscellaneous",
         "License": "GPL-3.0-or-later",
         "Version": "0.2.0",
-        "Website": "https://github.com/FaithLife-Community/logos-plasma-integrations",
+        "Website": "https://github.com/FaithLife-Community/logos-desktop-integrations",
         "Authors": [{ "Name": "FaithLife Community" }]
     },
     "KPackageStructure": "Plasma/Applet",

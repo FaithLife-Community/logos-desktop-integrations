@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Logos Plasma integrations backend: KRunner D-Bus runner + helpers for the Plasma widgets.
 
-Part of https://github.com/FaithLife-Community/logos-plasma-integrations (GPL-3.0-or-later).
+Part of https://github.com/FaithLife-Community/logos-desktop-integrations (GPL-3.0-or-later).
 A Raycast/BibleWorks-style command line for Logos on Linux:
 
   o John 3:16          pick a Bible (your top Bibles are listed; Enter = first)
