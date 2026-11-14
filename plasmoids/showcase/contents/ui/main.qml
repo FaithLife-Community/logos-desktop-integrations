@@ -13,8 +13,11 @@ PlasmoidItem {
     property string error: ""
     property string loadedDate: ""
     readonly property bool tilt: Plasmoid.configuration.tilt
-    readonly property bool sermonShelf: Plasmoid.configuration.shelf === "sermon"
-    onSermonShelfChanged: refresh(false)
+    readonly property string shelfMode: Plasmoid.configuration.shelf  // library · sermon · both
+    readonly property bool sermonShelf: shelfMode === "sermon"
+    readonly property bool hasSermon: shelfMode !== "library"
+    readonly property bool hasLibrary: shelfMode !== "sermon"
+    onShelfModeChanged: refresh(false)
     property alias backend: backend
 
     function today() {
@@ -31,7 +34,7 @@ PlasmoidItem {
     function refresh(shuffle) {
         loading = true
         backend.run("showcase", "--showcase " + Plasmoid.configuration.bookCount
-                    + (sermonShelf ? " --sermon" : "") + (shuffle ? " --shuffle" : ""))
+                    + (shelfMode === "sermon" ? " --sermon" : shelfMode === "both" ? " --sermon --library" : "") + (shuffle ? " --shuffle" : ""))
     }
 
     Backend {
@@ -54,11 +57,12 @@ PlasmoidItem {
     Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground | PlasmaCore.Types.ConfigurableBackground
     toolTipMainText: i18n("Logos Showcase")
     toolTipSubText: sermonShelf ? i18n("Your commentaries for your sermon passage")
+                  : shelfMode === "both" ? i18n("Your sermon commentaries and well-rated books you haven't read")
                                 : i18n("Well-rated books you own but haven't read")
 
     Plasmoid.contextualActions: [
         PlasmaCore.Action {
-            visible: !root.sermonShelf
+            visible: root.hasLibrary
             text: i18n("Show different books")
             icon.name: "media-playlist-shuffle"
             onTriggered: root.refresh(true)

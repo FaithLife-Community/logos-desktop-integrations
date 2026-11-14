@@ -4,7 +4,7 @@
       xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
   <kcfgfile name=""/>
   <group name="General">
-    <!-- "library": unread, well-rated books · "sermon": your commentaries for your sermon passage -->
+    <!-- "library": unread, well-rated books · "sermon": your commentaries for your sermon passage · "both": half each -->
     <entry name="shelf" type="String"><default>library</default></entry>
     <!-- the shelf shows as many whole rows as fit, up to this many books -->
     <entry name="bookCount" type="Int"><default>48</default></entry>
