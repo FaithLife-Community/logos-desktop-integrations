@@ -36,57 +36,51 @@ ColumnLayout {
         }
     }
 
-    GridView {
+    readonly property var sermonBooks: widget.books.filter(b => !!b.sermon)
+    readonly property var libraryBooks: widget.books.filter(b => !b.sermon)
+    readonly property var sermon: sermonBooks.length ? sermonBooks[0].sermon : null
+
+    function shelfRows(n, grid) {
+        return Math.max(1, Math.ceil(n / Math.max(1, grid.columns)))
+    }
+
+    // Commentaries for your next (or latest) sermon, opening at its passage.
+    Kirigami.Heading {
+        visible: shelf.sermon !== null
+        Layout.fillWidth: true
+        Layout.leftMargin: Kirigami.Units.largeSpacing
+        level: 5
+        opacity: 0.8
+        elide: Text.ElideRight
+        text: shelf.sermon ? (shelf.sermon.date
+              ? i18n("For your sermon on %1 · %2", shelf.sermon.passage,
+                     Qt.formatDate(new Date(shelf.sermon.date + "T12:00:00"), "ddd d MMM"))
+              : i18n("For your sermon on %1", shelf.sermon.passage)) : ""
+    }
+    ShelfGrid {
+        id: sermonGrid
+        visible: shelf.sermon !== null
+        shelf: shelf
+        model: shelf.sermonBooks
+        interactive: false
+        Layout.fillWidth: true
+        Layout.preferredHeight: shelf.shelfRows(count, sermonGrid) * cellHeight
+    }
+
+    Kirigami.Heading {
+        visible: shelf.sermon !== null
+        Layout.fillWidth: true
+        Layout.leftMargin: Kirigami.Units.largeSpacing
+        level: 5
+        opacity: 0.8
+        text: i18n("Unread and well rated")
+    }
+    ShelfGrid {
         id: grid
+        shelf: shelf
+        model: shelf.libraryBooks
         Layout.fillWidth: true
         Layout.fillHeight: true
-        clip: true
-        model: shelf.widget.books
-        // Spread the books evenly across the width.
-        readonly property int columns: Math.max(1, Math.floor(width / (shelf.bookWidth + Kirigami.Units.gridUnit)))
-        cellWidth: width / columns
-        cellHeight: shelf.bookHeight + shelf.plank + Kirigami.Units.gridUnit * 1.2
-        interactive: contentHeight > height
-
-        delegate: Item {
-            required property var modelData
-            required property int index
-            width: grid.cellWidth
-            height: grid.cellHeight
-
-            Book {
-                info: parent.modelData
-                tiltEnabled: shelf.widget.tilt
-                width: shelf.bookWidth
-                height: shelf.bookHeight
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: plank.top
-                onOpen: url => shelf.widget.backend.openUrl(url)
-            }
-
-            // The shelf plank: adjacent cells join up into one continuous shelf.
-            Rectangle {
-                id: plank
-                // the last book on a part-filled shelf extends the plank to the far edge
-                readonly property bool lastOnShelf: index === grid.count - 1
-                anchors { left: parent.left; bottom: parent.bottom }
-                width: lastOnShelf ? grid.width - parent.x : parent.width
-                anchors.bottomMargin: Kirigami.Units.smallSpacing * 2
-                height: shelf.plank
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.lighter(Kirigami.Theme.alternateBackgroundColor, 1.08) }
-                    GradientStop { position: 1.0; color: Qt.darker(Kirigami.Theme.alternateBackgroundColor, 1.25) }
-                }
-                Rectangle {  // soft shadow under the plank
-                    anchors { left: parent.left; right: parent.right; top: parent.bottom }
-                    height: Kirigami.Units.smallSpacing * 2
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.18) }
-                        GradientStop { position: 1.0; color: "transparent" }
-                    }
-                }
-            }
-        }
     }
 
     PlasmaComponents.Label {

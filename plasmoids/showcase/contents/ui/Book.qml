@@ -136,6 +136,8 @@ Item {
         delay: 500
         text: book.info.title + (book.info.authors ? "\n" + book.info.authors : "")
               + "\n★ " + book.info.rating + "  (" + book.info.ratings + ")"
+              + (book.info.myRating ? "\n" + i18n("Your rating: %1★", book.info.myRating) : "")
+              + (book.info.sermon ? "\n" + i18n("Opens at %1", book.info.sermon.passage) : "")
               + (book.info.cloud ? "\n" + i18n("Not downloaded yet") : "")
     }
 }

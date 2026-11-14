@@ -89,6 +89,7 @@ DEFAULTS = {
         # Set to false to get a notification (title on the clipboard) instead of the link,
         # if opening such books from outside Logos ever misbehaves.
         "link_cloud_books": True,
+        "showcase_sermon_commentaries": 3,  # your 4–5★ commentaries on your next sermon's passage
         "devotional_reminder": "",   # e.g. "07:30" for a daily devotional notification
     },
 }
@@ -731,33 +732,43 @@ class Library:
         return pri[:2] if pri else [d for d in devs[:1] if d.use]
 
     def factbook(self, text, limit=8):
+        """Factbook entries matching the words typed, ranked the way Logos does: an exact
+        name (or alternative name) first, then by how often the Bible mentions the entry."""
         path = self.data_dir / "AutoComplete" / "AutoComplete.db" if self.data_dir else None
         words = [w for w in re.findall(r"\w+", text.lower()) if w]
         if not path or not path.exists() or not words:
             return []
+        query = " ".join(words)
         first, rest = words[0], words[1:]
+        having = "".join(" AND group_concat(lower(l.LabelText), '|') LIKE ?" for _ in rest)
         with ro_connect(path) as c:
-            rows = c.execute("""
-                SELECT t.Reference, ik.IconKind, l.LabelText, l.IsPrimary,
-                       (SELECT Description FROM Descriptions d WHERE d.TermId = t.TermId AND d.LanguageId = 1),
-                       (SELECT LabelText FROM Labels p WHERE p.TermId = t.TermId AND p.IsPrimary = 1 AND p.LanguageId = 1)
-                FROM LabelWords w JOIN Labels l ON l.LabelId = w.LabelId JOIN Terms t ON t.TermId = l.TermId
+            rows = c.execute(f"""
+                SELECT t.TermId, t.Reference, ik.IconKind,
+                       max(lower(l.LabelText) = ?) AS exact,
+                       (SELECT count(*) FROM MentionReferences m WHERE m.TermId = t.TermId) AS mentions
+                FROM LabelWords w JOIN Labels l ON l.LabelId = w.LabelId
+                JOIN Terms t ON t.TermId = l.TermId
                 LEFT JOIN IconKinds ik ON ik.IconKindId = t.IconKindId
-                WHERE w.LanguageId = 1 AND w.FoldedText >= ? AND w.FoldedText < ?
-                LIMIT 400""", (first, first + "\uffff")).fetchall()
-        seen, out = set(), []
-        for ref, kind, label, primary, desc, primary_label in rows:
-            low = label.lower()
-            if ref in seen or not all(w in low for w in rest):
-                continue
-            seen.add(ref)
-            name = primary_label or label
-            exact = name.lower() == text.lower().strip() or low == text.lower().strip()
-            out.append({"key": ref, "kind": kind or "", "label": name,
-                        "alias": "" if primary else label, "description": desc or "",
-                        "score": (not exact, not ref.startswith("bk.#"), ref.startswith("bio."), len(name))})
-        out.sort(key=lambda r: r["score"])
-        return out[:limit]
+                WHERE w.LanguageId = 1 AND w.FoldedText >= ? AND w.FoldedText < ? AND l.LanguageId = 1
+                GROUP BY t.TermId HAVING 1 {having}
+                ORDER BY exact DESC, mentions DESC, t.Reference LIKE 'bk.#%' DESC, t.Reference LIKE 'bio.%'
+                LIMIT ?""", (query, first, first + "\uffff", *[f"%{w}%" for w in rest], limit)).fetchall()
+            out = []
+            for term_id, ref, kind, exact, mentions in rows:
+                primary = c.execute("SELECT LabelText FROM Labels WHERE TermId = ? AND IsPrimary = 1 "
+                                    "AND LanguageId = 1", (term_id,)).fetchone()
+                desc = c.execute("SELECT Description FROM Descriptions WHERE TermId = ? AND LanguageId = 1",
+                                 (term_id,)).fetchone()
+                name = primary[0] if primary else ref
+                # show the alternative name that matched when it differs from the main name
+                alias = ""
+                if name.lower() != query:
+                    hit = c.execute("SELECT LabelText FROM Labels WHERE TermId = ? AND LanguageId = 1 "
+                                    "AND lower(LabelText) = ?", (term_id, query)).fetchone()
+                    alias = hit[0] if hit else ""
+                out.append({"key": ref, "kind": kind or "", "label": name, "alias": alias,
+                            "description": (desc[0] if desc else "") or "", "mentions": mentions})
+        return out
 
     def recent(self, open_url, limit=10):
         path = self.data_dir / "HistoryManager" / "history.db" if self.data_dir else None
@@ -788,6 +799,86 @@ class Library:
                 break
         return out
 
+    def sermon_passage(self, today=None):
+        """(title, date, datatype reference) for your next sermon, or the latest one.
+        The date comes from the sermon's date field, else a dd/mm/yy date in its title."""
+        today = today or datetime.date.today()
+        path = self.docs_dir / "Documents" / "Sermon" / "Sermon.db" if self.docs_dir else None
+        if not path or not path.exists():
+            return None
+        with ro_connect(path) as c:
+            docs = c.execute("SELECT Id, Title, Date, ModifiedDate FROM Documents WHERE IsDeleted = 0 "
+                             "AND coalesce(IsTemplate, 0) = 0").fetchall()
+            dated = []
+            for did, title, date, modified in docs:
+                d = None
+                if date:
+                    try:
+                        d = datetime.date.fromisoformat(str(date)[:10])
+                    except ValueError:
+                        pass
+                if d is None:
+                    m = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\b", title or "")
+                    if m:
+                        dd, mm, yy = map(int, m.groups())
+                        try:
+                            d = datetime.date(yy + 2000 if yy < 100 else yy, mm, dd)
+                        except ValueError:
+                            d = None
+                dated.append((d, modified or "", did, title or ""))
+            upcoming = sorted([x for x in dated if x[0] and x[0] >= today])
+            past = sorted([x for x in dated if x[0] and x[0] < today], reverse=True)
+            latest = sorted(dated, key=lambda x: x[1], reverse=True)
+            for d, _, did, title in (upcoming[:1] + past[:1] + latest[:1]):
+                ref = None
+                for (pj,) in c.execute("SELECT PassageJson FROM Blocks WHERE DocumentId = ? AND IsDeleted = 0 "
+                                       "AND PassageJson IS NOT NULL ORDER BY Rank", (did,)):
+                    try:
+                        ref = json.loads(pj)["reference"]["raw"]
+                        break
+                    except (ValueError, KeyError, TypeError):
+                        continue
+                if not ref:
+                    found = find_references(title)
+                    if found:
+                        ref = found[0]  # readable form, e.g. "Genesis 4:17-26"
+                if ref:
+                    return {"title": title, "date": d.isoformat() if d else "", "reference": ref}
+        return None
+
+    def sermon_commentaries(self, sermon, count=3, open_url=""):
+        """Your own 4–5★ commentaries covering the sermon passage (topped up with the best
+        community-rated ones), each linking straight to the passage."""
+        ref = sermon["reference"]
+        readable = format_reference(ref) if ref.startswith("bible") else ref
+        if ref.startswith("bible"):
+            datatype_ref = ref
+        else:  # "Genesis 4:17-26" → find book number for coverage checks
+            m = re.match(r"(.+?) (\d+)(?::(\d+))?", ref)
+            num = BOOK_LOOKUP.get(re.sub(r"\s+", "", m.group(1).lower())) if m else None
+            datatype_ref = f"bible.{num}.{m.group(2)}.{m.group(3) or 1}" if num else ""
+        if not datatype_ref or not readable:
+            return []
+        rows = self.db().execute("""
+            SELECT r.RecordId, r.ResourceId, r.Title, r.Authors, r.ReferenceSupersets, r.UserRating,
+                   r.CommunityRating, r.CommunityRatingCount, r.Availability,
+                   (SELECT group_concat(AlternateResourceId, ' ') FROM AlternateResourceIds a
+                    WHERE a.RecordId = r.RecordId)
+            FROM Records r WHERE r.Type = 'text.monograph.commentary.bible' AND r.Availability >= 1""").fetchall()
+        hits = [r for r in rows if covers(r[4], datatype_ref)]
+        mine = sorted([r for r in hits if (r[5] or 0) >= 4], key=lambda r: (-r[5], -(r[6] or 0) * (r[7] or 0)))
+        rest = sorted([r for r in hits if (r[5] or 0) < 4 and (r[7] or 0) >= 15],
+                      key=lambda r: -((r[6] or 0) * r[7] + 3.6 * 30) / (r[7] + 30))
+        q = encode(readable.replace("\u2013", "-"), ":,.")
+        out = []
+        for rec, rid, title, authors, _, mine_rating, rating, n, avail, alts in (mine + rest)[:count]:
+            out.append({"title": title, "authors": byline(authors or ""), "rating": round(rating or 0, 1),
+                        "ratings": n or 0, "myRating": mine_rating or 0, "resourceId": rid,
+                        "url": f"logosres:{logosres_id(rid, alts)};ref=Bible.{q}",
+                        "cover": self.cover_file(rid), "cloud": avail == 1,
+                        "sermon": {"title": sermon["title"], "passage": readable, "date": sermon["date"]}})
+        return out
+
     def showcase(self, count=12, seed=None, min_ratings=15):
         """Well-rated books you own but haven't read, one per series/author, rotating daily.
 
@@ -802,22 +893,17 @@ class Library:
                     "SELECT ResourceId FROM ResourceReadingProgress WHERE IsDeleted = 0"))
                 read.update(r for (r,) in c.execute(
                     "SELECT ResourceId FROM ReadingStatus WHERE PercentageRead > 0"))
-        skip_types = ("text.monograph.bible", "text.monograph.lexicon", "text.monograph.dictionary",
-                      "text.monograph.encyclopedia", "text.monograph.ancient-manuscript",
-                      "text.monograph.ancient-manuscript.translation", "text.monograph.courseware",
-                      "text.monograph.grammar", "text.monograph.study.bible", "text.monograph.workbook",
-                      "text.monograph.service-book", "text.monograph.cross-references.bible")
+        keep_types = SHOWCASE_TYPES
         rows = self.db().execute(f"""
             SELECT r.RecordId, r.ResourceId, r.Title, r.Authors, r.Series, r.Type,
                    r.CommunityRating, r.CommunityRatingCount, r.Availability,
                    (SELECT group_concat(AlternateResourceId, ' ') FROM AlternateResourceIds a
                     WHERE a.RecordId = r.RecordId)
             FROM Records r JOIN Images i ON i.RecordId = r.RecordId
-            WHERE r.Availability >= 1 AND r.Type LIKE 'text.monograph%'
-              AND r.Type NOT IN ({",".join("?" * len(skip_types))})
+            WHERE r.Availability >= 1 AND r.Type IN ({",".join("?" * len(keep_types))})
               AND r.UseCount = 0 AND r.LastAccessed IS NULL
               AND r.CommunityRatingCount >= ? AND i.Image IS NOT NULL""",
-            (*skip_types, min_ratings)).fetchall()
+            (*keep_types, min_ratings)).fetchall()
         # Bayesian average: books with few ratings are pulled towards the library's mean rating.
         prior = sum(r[6] * r[7] for r in rows) / max(1, sum(r[7] for r in rows))  # rating × count
         weight = 30
@@ -858,11 +944,7 @@ class Library:
         picks.sort(reverse=True)
         out = []
         for score, rec, rid, title, authors, series, typ, rating, n, alts in picks:
-            names = [" ".join(reversed([x.strip() for x in a.split(",", 1)])) if "," in a else a.strip()
-                     for a in re.split(r"[\t;]", authors) if a.strip()]
-            byline = names[0] if len(names) == 1 else (f"{names[0]} & {names[1]}" if len(names) == 2
-                                                      else f"{names[0]} et al.") if names else ""
-            out.append({"title": title, "authors": byline, "series": series,
+            out.append({"title": title, "authors": byline(authors), "series": series,
                         "rating": round(rating, 1), "ratings": n, "resourceId": rid,
                         "cloud": cloud.get(rid, False),
                         "url": f"logosres:{logosres_id(rid, alts)}", "cover": self.cover_file(rid)})
@@ -918,6 +1000,51 @@ class Library:
             log(f"cover {record_id}: {e}")
         self._covers[record_id] = img
         return img
+
+
+# Monographs: books you'd read, not consult (no commentaries or reference works).
+SHOWCASE_TYPES = ("text.monograph", "text.monograph.systematic-theology",
+                  "text.monograph.biblical-theology", "text.monograph.church-history",
+                  "text.monograph.biography", "text.monograph.devotional",
+                  "text.monograph.collected-work", "text.monograph.sermons", "text.monograph.lecture",
+                  "text.monograph.introduction.new-testament", "text.monograph.introduction.old-testament")
+
+
+def _ref_key(parts, fill):
+    parts = list(parts) + [fill] * (3 - len(parts))
+    return tuple(parts[:3])
+
+
+def covers(supersets, ref):
+    """Does a catalog ReferenceSupersets string ('bible.66.1-66.16.27\tbible+bhs.8…')
+    cover the start of a Bible datatype reference ('bible+nkjv.1.4.17-1.4.26')?"""
+    try:
+        start = list(map(int, ref.split(".", 1)[1].split("-")[0].split(".")))
+    except (IndexError, ValueError):
+        return False
+    p = _ref_key(start, 1)
+    for rng in (supersets or "").split("\t"):
+        if not rng.startswith("bible"):
+            continue
+        try:
+            a, _, b = rng.split(".", 1)[1].partition("-")
+            a = list(map(int, a.split(".")))
+            b = list(map(int, (b or ".".join(map(str, a))).split(".")))
+        except ValueError:
+            continue
+        if _ref_key(a, 0) <= p <= _ref_key(b, 999):
+            return True
+    return False
+
+
+def byline(authors):
+    """'Heiser, Michael S.\tBrown, Derek' → 'Michael S. Heiser & Derek Brown'."""
+    names = [" ".join(reversed([x.strip() for x in a.split(",", 1)])) if "," in a else a.strip()
+             for a in re.split(r"[\t;]", authors or "") if a.strip()]
+    if not names:
+        return ""
+    return names[0] if len(names) == 1 else (f"{names[0]} & {names[1]}" if len(names) == 2
+                                             else f"{names[0]} et al.")
 
 
 def priority_key(r):
@@ -1441,32 +1568,45 @@ def main_service():
             return rows
 
         def help_rows(self, flt):
-            flt = flt.lower()
-            rows = []
-            seen = set()
+            """`logos`: a few grouped rows that fit KRunner's list; `logos <word>`: matching
+            individual commands."""
+            flt = flt.lower().strip()
+            a = {k: v for k, v in self.cfg.aliases.items() if v}
+            if not flt:
+                eg = (self.lib.bibles[0].key if self.lib.bibles else "esv")
+                groups = [
+                    ("Open a passage", f"{a.get('open','o')} John 3:16 · {a.get('open','o')}{eg} John 3:16 · "
+                                       "or just type John 3:16", "document-open"),
+                    ("Search", f"{a.get('search','s')} grace · {a.get('top','stb')} grace (Top Bibles) · "
+                               f"{a.get('everything','sll')} grace (library) · {a.get('phrase', chr(39))}phrase · "
+                               f"{a.get('words','.')}any words", "search"),
+                    ("Words & lexicons", f"{a.get('lexicon','lex')} ἀγάπη · o<lexicon> ἀγάπη (obdag) · "
+                                         f"{a.get('wordstudy','ws')} agape", "accessories-dictionary"),
+                    ("Factbook, books & guides", f"{a.get('factbook','fb')} moses · {a.get('library','ol')} bavinck · "
+                                                f"{a.get('recent','or')} (recent) · {a.get('compare','otc')} Ruth 1 · "
+                                                + " · ".join(c.alias for c in self.cmds.values() if c.kind == "url")[:60],
+                     "view-list-details"),
+                    ("Every day", f"{a.get('plans','rp')} (reading plans) · {a.get('devotional','today')} (devotional) · "
+                                  "Meta+Alt+L looks up a copied reference", "view-calendar-day"),
+                    (f"{a.get('help','logos')} <word> lists matching commands", "e.g. logos search · logos fb", "help-about"),
+                ]
+                return [("", title, icon, HIGHEST, 0.9 - i * 0.01, props(subtext=sub, actions=NO_ACTIONS))
+                        for i, (title, sub, icon) in enumerate(groups)]
+            rows, seen = [], set()
             for alias, c in sorted(self.cmds.items()):
-                if c.bible is not None and not flt:
-                    continue  # don't list hundreds of o<abbr>/s<abbr> unless filtering
                 text = f"{alias}  —  {c.name}"
-                if flt and flt not in text.lower():
+                if (c.bible is not None and flt not in alias) or flt not in (text + " " + c.kind).lower():
                     continue
                 if text in seen:
                     continue
                 seen.add(text)
-                rows.append(("", text, "logos-plasma", LOW, 0.3,
+                rows.append(("", text, "logos-plasma", HIGHEST, 0.8 - len(rows) * 0.001,
                              props(subtext=f"{alias} <{c.hint}>", actions=NO_ACTIONS)))
-            if not flt and self.lib.bibles and self.cfg.settings["bible_aliases"]:
-                o, sa = self.cfg.aliases.get("open", "o"), self.cfg.aliases.get("search", "s")
-                rows.append(("", f"{o}<bible> / {sa}<bible>  —  any of your {len(self.lib.bibles)} Bibles",
-                             "logos-plasma", LOW, 0.29,
-                             props(subtext=f"e.g. {o}{self.lib.bibles[0].key}; type 'logos esv' to filter",
-                                   actions=NO_ACTIONS)))
-            extras = [("John 3:16  —  any Bible reference", "Opens in your preferred Bible"),
-                      ("Meta+Alt+L  —  Look up in Logos", "Opens the reference (or word) in the clipboard")]
-            for text, sub in extras:
-                if not flt or flt in text.lower():
-                    rows.append(("", text, "logos-plasma", LOW, 0.28, props(subtext=sub, actions=NO_ACTIONS)))
-            return rows[:40]
+            for text, sub in [("John 3:16  —  any Bible reference", "Opens in your preferred Bible"),
+                              ("Meta+Alt+L  —  Look up in Logos", "Opens the reference (or word) in the clipboard")]:
+                if flt in text.lower():
+                    rows.append(("", text, "logos-plasma", HIGHEST, 0.7, props(subtext=sub, actions=NO_ACTIONS)))
+            return rows[:20]
 
         # launching ------------------------------------------------------------
         def launch(self, url):
@@ -1493,23 +1633,9 @@ def main_service():
                     self.focus_deadline = time.monotonic() + 5
                     GLib.timeout_add(200, self.focus)
                     return
-            ctx = Gio.AppLaunchContext()
-            if self.token:
-                ctx.setenv("XDG_ACTIVATION_TOKEN", self.token)
-                self.token = ""
-            info = (Gio.DesktopAppInfo.new(s["handler"]) if s["handler"]
-                    else Gio.AppInfo.get_default_for_uri_scheme("logos4"))
+            token, self.token = self.token, ""
             log(f"launching {url}")
-            if info is None:
-                log("no logos4: handler registered; falling back to xdg-open")
-                GLib.spawn_async(["xdg-open", url], flags=GLib.SpawnFlags.SEARCH_PATH)
-            else:
-                # Ou Dedetai's handler only declares logos4:/libronixdls: and sets
-                # Terminal=true; reuse its command line directly so logosres: links work
-                # and no terminal window pops up.
-                Gio.AppInfo.create_from_commandline(
-                    info.get_commandline(), "Logos", Gio.AppInfoCreateFlags.SUPPORTS_URIS
-                ).launch_uris([url], ctx)
+            launch_with_handler(url, s["handler"], token)
             if s["focus"]:
                 self.focus_deadline = time.monotonic() + 90
                 GLib.timeout_add(350, self.focus)   # after KRunner has closed
@@ -1622,13 +1748,36 @@ def cli_reading_plans():
 
 
 def cli_open(url):
-    """Open a Logos URL through the runner service (handler, no terminal, then focus)."""
+    """Open a Logos URL through the runner service (handler, no terminal, then focus).
+    If the service can't be reached, run the handler's command line directly. Never use
+    xdg-open: Ou Dedetai's handler has Terminal=true, which opens a terminal window."""
     import dbus
     try:
         dbus.SessionBus().get_object(BUS_NAME, OBJ_PATH).Run(url, "", dbus_interface=IFACE)
+        return
     except dbus.DBusException as e:
-        log(f"runner service unavailable ({e}); using xdg-open")
-        os.execvp("xdg-open", ["xdg-open", url])
+        log(f"runner service unavailable ({e.get_dbus_name()}: {e}); launching the handler directly")
+    cfg = Config()
+    cfg.maybe_reload()
+    launch_with_handler(url, cfg.settings["handler"])
+
+
+def launch_with_handler(url, handler="", token=""):
+    """Run the logos4: handler's command line with the URL, without a terminal."""
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio
+    info = Gio.DesktopAppInfo.new(handler) if handler else Gio.AppInfo.get_default_for_uri_scheme("logos4")
+    if info is None:
+        log("no logos4: handler registered (run Ou Dedetai's installer)")
+        return False
+    ctx = Gio.AppLaunchContext()
+    if token:
+        ctx.setenv("XDG_ACTIVATION_TOKEN", token)
+    # Ou Dedetai's handler only declares logos4:/libronixdls: and sets Terminal=true;
+    # reuse its command line so logosres:/logosref: links work and no terminal opens.
+    Gio.AppInfo.create_from_commandline(
+        info.get_commandline(), "Logos", Gio.AppInfoCreateFlags.SUPPORTS_URIS).launch_uris([url], ctx)
+    return True
 
 
 def kwin_run_script(bus, path, name):
@@ -1735,7 +1884,17 @@ if __name__ == "__main__":
         i = sys.argv.index("--showcase")
         count = int(sys.argv[i + 1]) if len(sys.argv) > i + 1 and sys.argv[i + 1].isdigit() else 12
         seed = time.time() if "--shuffle" in sys.argv else None
-        print(json.dumps(lib.showcase(count, seed), ensure_ascii=False))
+        books = []
+        n_sermon = int(cfg.settings.get("showcase_sermon_commentaries", 3))
+        if n_sermon:
+            try:
+                sermon = lib.sermon_passage()
+                if sermon:
+                    books = lib.sermon_commentaries(sermon, n_sermon)
+            except Exception as e:
+                log(f"sermon commentaries: {e!r}")
+        books += lib.showcase(max(1, count - len(books)), seed)
+        print(json.dumps(books, ensure_ascii=False))
     elif "--lookup" in sys.argv:
         cli_lookup(selection="--selection" in sys.argv)
     elif "--check-reminders" in sys.argv:
