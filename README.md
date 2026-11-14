@@ -61,6 +61,7 @@ settings in `~/.config/logos-plasma`). The installer doesn't restart KRunner or 
 | `ws agape` · `fb moses` | Bible Word Study · Factbook, with Logos's own descriptions to tell same-named entries apart |
 | `or` | Recently opened books |
 | `lay` | Your saved layouts: switch Logos to one |
+| `cv John 3:16` | Copy a passage as text, in your Copy Bible Verses style |
 | `John 3:16` | A bare reference opens in your preferred Bible |
 | `logos [filter]` | List commands |
 

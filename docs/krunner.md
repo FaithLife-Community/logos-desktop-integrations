@@ -62,6 +62,12 @@ Your top Bibles are the ones you open most, or follow Logos's **Prioritize** lis
 | `today` | Today's entry in your devotionals (your prioritized ones first). |
 | **Meta+Alt+L** (anywhere) | Opens the Bible reference you've copied, from any app. A single copied word opens Bible Word Study. Change the key in System Settings → Shortcuts → "Look up in Logos". |
 
+## Copying verses
+
+| Type | What happens |
+|---|---|
+| `cv John 3:16-18` | Copies the passage as text to the clipboard, in your preferred Bible and the format you last chose in Logos's **Copy Bible Verses** tool. Logos needs to be running. |
+
 ## Extra actions
 
 Each result has a **Copy Logos URL** button (shown when you hover or select it), which puts the

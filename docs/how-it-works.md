@@ -93,3 +93,10 @@ Logos registers its COM server (`LogosCom.exe`) for the current user only
 `logos_plasma.py --register-com`, which copies Logos's own registration, unchanged, from the
 prefix's `user.reg` to `HKEY_LOCAL_MACHINE\Software\Classes` (via `regedit /S`; the file it
 imports is kept as `~/.local/share/logos-plasma/logos-com-hklm.reg`).
+
+## Copying verses
+
+`cv` uses the same COM API: `CopyBibleVerses.GetText` returns the passage in your preferred
+Bible, formatted the way you last set up Logos's Copy Bible Verses tool. `copyverses.vbs` writes it
+to `copyverses.txt` as UTF-16 (Wine's console output would mangle Greek, Hebrew and curly quotes),
+and the backend puts it on the clipboard.
