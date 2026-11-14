@@ -1090,7 +1090,9 @@ FOCUS_JS = r"""
         if (typeof workspace.raiseWindow === "function") workspace.raiseWindow(best);
         if ("activeWindow" in workspace) workspace.activeWindow = best;
         else workspace.activeClient = best;
-        seen.push({chosen: String(best.caption)});
+        var now = workspace.activeWindow || workspace.activeClient;
+        seen.push({chosen: String(best.caption), activeAfter: now ? String(now.caption) : "(none)",
+                   onDesktop: best.onCurrentDesktop !== false, activity: best.onAllActivities ? "all" : "this"});
     }
     callDBus("%s", "%s", "%s", "FocusResult", best !== null, JSON.stringify(seen));
 })();
@@ -1366,9 +1368,15 @@ def main_service():
                                          "org.freedesktop.Notifications")
 
         def on_notification_action(self, nid, action):
-            url = self.notif_actions.get(int(nid), {}).get(str(action))
+            url = self.notif_actions.pop(int(nid), {}).get(str(action))
             if url:
                 self.launch(url)
+                try:
+                    self.bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+                                        introspect=False).CloseNotification(
+                        dbus.UInt32(nid), dbus_interface="org.freedesktop.Notifications")
+                except dbus.DBusException:
+                    pass
 
         def on_notification_closed(self, nid, reason):
             self.notif_actions.pop(int(nid), None)
@@ -1408,10 +1416,9 @@ def main_service():
             for title, body, url in due:
                 summary = "Today's devotional" if title == "__devotional__" else title
                 nid = notify(summary, body, icon="view-calendar-day",
-                             actions=["default", "Read now", "open", "Read now"] if url else [],
-                             bus=self.bus, timeout=0)
+                             actions=["default", "Read now"] if url else [], bus=self.bus)
                 if nid:
-                    self.notif_actions[nid] = {"default": url, "open": url}
+                    self.notif_actions[nid] = {"default": url}
                     state[title] = today
             if due:
                 state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1660,8 +1667,11 @@ def focus_test():
         @dbus.service.method(INTERNAL_IFACE)
         def FocusResult(self, found, info=""):
             items = json.loads(info or "[]")
-            chosen = [w["chosen"] for w in items if "chosen" in w]
-            print("Logos window raised:", bool(found), f"→ “{chosen[0]}”" if chosen else "")
+            chosen = [w for w in items if "chosen" in w]
+            print("Logos window raised:", bool(found), f"→ “{chosen[0]['chosen']}”" if chosen else "")
+            if chosen:
+                c = chosen[0]
+                print(f"  active window after: “{c['activeAfter']}”; on current desktop: {c['onDesktop']}")
             for w in items:
                 if "chosen" not in w and (w.get("normal") or "-v" in sys.argv):
                     print(" ", w)
