@@ -20,7 +20,7 @@ ColumnLayout {
         Kirigami.Heading {
             Layout.fillWidth: true
             level: 3
-            text: i18n("From your library")
+            text: shelf.widget.sermonShelf ? i18n("For your sermon") : i18n("From your library")
             elide: Text.ElideRight
         }
         PlasmaComponents.BusyIndicator {
@@ -30,61 +30,35 @@ ColumnLayout {
             Layout.preferredHeight: Layout.preferredWidth
         }
         PlasmaComponents.ToolButton {
+            visible: !shelf.widget.sermonShelf
             icon.name: "media-playlist-shuffle"
             onClicked: shelf.widget.refresh(true)
             PlasmaComponents.ToolTip { text: i18n("Show different books") }
         }
     }
 
-    readonly property var sermonBooks: widget.books.filter(b => !!b.sermon)
-    readonly property var libraryBooks: widget.books.filter(b => !b.sermon)
-    readonly property var sermon: sermonBooks.length ? sermonBooks[0].sermon : null
+    readonly property var sermon: widget.sermonShelf && widget.books.length ? widget.books[0].sermon : null
 
-    function shelfRows(n, grid) {
-        return Math.max(1, Math.ceil(n / Math.max(1, grid.columns)))
-    }
-
-    // Commentaries for your next (or latest) sermon, opening at its passage.
-    Kirigami.Heading {
+    // Sermon shelf: which passage and when
+    PlasmaComponents.Label {
         visible: shelf.sermon !== null
         Layout.fillWidth: true
         Layout.leftMargin: Kirigami.Units.largeSpacing
-        level: 5
         opacity: 0.8
         elide: Text.ElideRight
         text: shelf.sermon ? (shelf.sermon.date
-              ? i18n("For your sermon on %1 · %2", shelf.sermon.passage,
+              ? i18n("%1 · %2", shelf.sermon.passage,
                      Qt.formatDate(new Date(shelf.sermon.date + "T12:00:00"), "ddd d MMM"))
-              : i18n("For your sermon on %1", shelf.sermon.passage)) : ""
-    }
-    ShelfGrid {
-        id: sermonGrid
-        visible: shelf.sermon !== null
-        shelf: shelf
-        // every 4–5★ commentary you have for the passage, wrapping onto more shelves; past
-        // half the widget it scrolls, so the library shelf below always keeps some room
-        model: shelf.sermonBooks
-        readonly property real fullHeight: shelf.shelfRows(count, sermonGrid) * cellHeight
-        readonly property real maxHeight: Math.max(cellHeight, shelf.height * 0.5)
-        interactive: fullHeight > maxHeight
-        clip: interactive
-        Layout.fillWidth: true
-        Layout.preferredHeight: Math.min(fullHeight, maxHeight)
-    }
-
-    Kirigami.Heading {
-        visible: shelf.sermon !== null
-        Layout.fillWidth: true
-        Layout.leftMargin: Kirigami.Units.largeSpacing
-        level: 5
-        opacity: 0.8
-        text: i18n("Unread and well rated")
+              : shelf.sermon.passage) : ""
     }
     ShelfGrid {
         id: grid
         shelf: shelf
         adaptive: true
-        model: shelf.libraryBooks.slice(0, Math.max(columns, fits))
+        // the library shelf shows whole rows; the sermon shelf shows every commentary,
+        // scrolling if they don't all fit
+        model: shelf.widget.sermonShelf ? shelf.widget.books
+                                        : shelf.widget.books.slice(0, Math.max(columns, fits))
         Layout.fillWidth: true
         Layout.fillHeight: true
     }
@@ -93,7 +67,9 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.leftMargin: Kirigami.Units.largeSpacing
         visible: shelf.widget.books.length === 0 && !shelf.widget.loading
-        text: shelf.widget.error || i18n("Nothing to show yet")
+        text: shelf.widget.error || (shelf.widget.sermonShelf
+              ? i18n("No sermon document with a passage found, or no commentaries you've rated for it")
+              : i18n("Nothing to show yet"))
         wrapMode: Text.Wrap
         opacity: 0.7
     }

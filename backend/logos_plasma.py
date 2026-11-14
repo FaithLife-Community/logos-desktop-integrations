@@ -2132,15 +2132,16 @@ if __name__ == "__main__":
         count = int(sys.argv[i + 1]) if len(sys.argv) > i + 1 and sys.argv[i + 1].isdigit() else 12
         seed = time.time() if "--shuffle" in sys.argv else None
         books = []
-        n_sermon = int(cfg.settings.get("showcase_sermon_commentaries", 60))
-        if n_sermon:
+        if "--sermon" in sys.argv:  # the sermon shelf: your commentaries for the sermon passage
+            n_sermon = int(cfg.settings.get("showcase_sermon_commentaries", 60))
             try:
                 sermon = lib.sermon_passage()
                 if sermon:
                     books = lib.sermon_commentaries(sermon, n_sermon)
             except Exception as e:
                 log(f"sermon commentaries: {e!r}")
-        books += lib.showcase(count, seed)
+        else:
+            books = lib.showcase(count, seed)
         print(json.dumps(books, ensure_ascii=False))
     elif "--lookup" in sys.argv:
         cli_lookup(selection="--selection" in sys.argv)

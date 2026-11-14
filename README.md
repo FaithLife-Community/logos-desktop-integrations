@@ -4,10 +4,12 @@ KDE Plasma 6 integrations for [Logos Bible Software](https://www.logos.com) runn
 under Wine via [Ou Dedetai](https://github.com/FaithLife-Community/OuDedetai):
 
 * **KRunner commands**: a Raycast/BibleWorks-style command line for Logos, available in
-  KRunner (Alt+Space) and Plasma's launcher search.
+  KRunner (Alt+Space) and Plasma's launcher search. See the [KRunner guide](docs/krunner.md).
 * **Logos Verse of the Day** widget: today's Verse of the Day art. Click it to open the verse in Logos.
 * **Logos Showcase** widget: a shelf of well-rated books you own but haven't read on any
   device, one per series and author, refreshed daily. Covers lift and tilt as you hover.
+  Set a Showcase to **Commentaries for your sermon** instead and it shows the commentaries
+  you've rated 4–5★ for the passage of your next sermon document, each opening at that passage.
 * **Look up in Logos** (Meta+Alt+L): copy a Bible reference anywhere and open it in your
   preferred Bible. A single word opens Bible Word Study instead.
 * **Reading-plan reminders**: notifications at each plan's reminder time, with a "Read now" button.
@@ -53,6 +55,7 @@ The installer doesn't restart KRunner or Plasma.
 
 Aliases, picker Bibles and your own URL commands live in `~/.config/logos-plasma/commands.toml`.
 To add a command, use **Copy location** on a Logos panel and replace the passage or word with `{q}`.
+The [KRunner guide](docs/krunner.md) covers every command in more detail.
 
 ## How it works
 
