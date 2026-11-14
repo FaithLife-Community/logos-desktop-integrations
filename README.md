@@ -61,10 +61,14 @@ formats, and how it gets around the handler's limitations.
 
 ## Troubleshooting
 
+    python3 ~/.local/share/logos-plasma/logos_plasma.py --selftest     # check everything; add --live to open Logos too
     python3 ~/.local/share/logos-plasma/logos_plasma.py --check        # paths, Bibles, alias conflicts
     python3 ~/.local/share/logos-plasma/logos_plasma.py --focus-test   # what KWin sees when raising Logos
     python3 ~/.local/share/logos-plasma/logos_plasma.py --reading-plans
     journalctl --user -f | grep logos-plasma
+
+`--selftest` writes its report to `~/.local/share/logos-plasma/selftest.txt`; attach that
+file when reporting a problem.
 
 If Logos isn't brought to the front, `--focus-test` lists the candidate windows. Put the
 right class in `window_classes` in `commands.toml`.

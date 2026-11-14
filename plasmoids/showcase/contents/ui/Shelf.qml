@@ -61,10 +61,15 @@ ColumnLayout {
         id: sermonGrid
         visible: shelf.sermon !== null
         shelf: shelf
-        model: shelf.sermonBooks.slice(0, columns)  // one shelf: as many as fit the row
-        interactive: false
+        // every 4–5★ commentary you have for the passage, wrapping onto more shelves; past
+        // half the widget it scrolls, so the library shelf below always keeps some room
+        model: shelf.sermonBooks
+        readonly property real fullHeight: shelf.shelfRows(count, sermonGrid) * cellHeight
+        readonly property real maxHeight: Math.max(cellHeight, shelf.height * 0.5)
+        interactive: fullHeight > maxHeight
+        clip: interactive
         Layout.fillWidth: true
-        Layout.preferredHeight: cellHeight
+        Layout.preferredHeight: Math.min(fullHeight, maxHeight)
     }
 
     Kirigami.Heading {

@@ -89,7 +89,7 @@ DEFAULTS = {
         # Set to false to get a notification (title on the clipboard) instead of the link,
         # if opening such books from outside Logos ever misbehaves.
         "link_cloud_books": True,
-        "showcase_sermon_commentaries": 12,  # at most this many of your 4–5★ commentaries on the passage
+        "showcase_sermon_commentaries": 60,  # at most this many of your 4–5★ commentaries on the passage
         "devotional_reminder": "",   # e.g. "07:30" for a daily devotional notification
     },
 }
@@ -883,8 +883,14 @@ class Library:
         # your own 4–5★ ratings only; community ratings only when you've rated none for it
         rest = [] if mine else rest[:3]
         q = encode(readable.replace("\u2013", "-"), ":,.")
-        out = []
-        for rec, rid, title, authors, _, mine_rating, rating, n, avail, alts in (mine + rest)[:count]:
+        out, seen = [], set()
+        for rec, rid, title, authors, _, mine_rating, rating, n, avail, alts in mine + rest:
+            key = (title.casefold(), (authors or "").casefold())
+            if key in seen:  # same book listed twice in the catalog (e.g. two editions/records)
+                continue
+            seen.add(key)
+            if len(out) >= count:
+                break
             out.append({"title": title, "authors": byline(authors or ""), "rating": round(rating or 0, 1),
                         "ratings": n or 0, "myRating": mine_rating or 0, "resourceId": rid,
                         "url": f"logosres:{logosres_id(rid, alts)};ref=Bible.{q}",
@@ -1944,8 +1950,171 @@ def check():
     print("conflicts:", " ".join(bad) if bad else "none")
 
 
+SELFTEST_QUERIES = [  # (query, what a good first row looks like)
+    ("logos", "help"), ("john 3:16", "url"), ("o john 3:16", "url"), ("oesv rom 8:28", "url"),
+    ("s love", "url"), ("stb love", "url"), ("'faith hope love", "url"), (".grace peace", "url"),
+    ("lex logos", "url"), ("ws agape", "url"), ("fb jesus", "url"), ("ol genesis", "url"),
+    ("or", "url"), ("otc john 1:1", "url"), ("opg john 1", "url"), ("rp", "any"), ("today", "url"),
+]
+
+
+def selftest():
+    """Check everything that can be checked without clicking, and write the report to
+    ~/.local/share/logos-plasma/selftest.txt (where it can be shared or read back)."""
+    import subprocess
+    lines, fails = [], []
+
+    def out(ok, name, detail=""):
+        mark = {True: "PASS", False: "FAIL", None: "skip"}[ok]
+        lines.append(f"{mark}  {name}" + (f" — {detail}" if detail else ""))
+        if ok is False:
+            fails.append(name)
+
+    def attempt(name, fn):
+        try:
+            ok, detail = fn()
+            out(ok, name, detail)
+        except Exception as e:
+            out(False, name, repr(e))
+
+    cfg = Config()
+    cfg.maybe_reload()
+    lib = Library()
+    lib.refresh(cfg.settings["logos_data"])
+    s = cfg.settings
+    lines.append(f"logos-plasma self-test {time.strftime('%Y-%m-%d %H:%M')} · {platform_desc()}")
+    lines.append("")
+    lines.append("── Logos data (read-only) ──")
+    out(bool(lib.catalog_path), "catalog found", str(lib.catalog_path or lib.error))
+    if not lib.catalog_path:
+        return finish(lines, fails)
+    attempt("Bibles", lambda: (len(lib.bibles) > 0, f"{len(lib.bibles)} owned; picker: " + ", ".join(
+        b.abbr for b in lib.picker(s["picker_bibles"], s["picker_order"], s["picker_size"]))))
+    attempt("lexicons", lambda: (lambda l: (bool(l), ", ".join(x.abbr or x.title[:20] for x in l)))(
+        lib.lexicon_picker("logos", s["picker_size"])))
+    attempt("factbook “jesus”", lambda: (lambda f: (bool(f) and "jesus" in f[0]["label"].lower(),
+            " · ".join(x["label"] for x in f[:3])))(lib.factbook("jesus")))
+    attempt("recent books", lambda: (lambda r: (True, f"{len(r)}; latest: {r[0]['title'][:40]}" if r else "none"))(
+        lib.recent(s["open_url"])))
+    attempt("reading plans", lambda: (lambda p: (True, "; ".join(
+        f"{x['title'][:30]} ({x['done']}/{x['total']}{', ' + x['dueLabel'] if x['dueLabel'] else ''})" for x in p[:4]) or "none"))(
+        lib.reading_plans(s["open_url"])))
+    attempt("devotionals", lambda: (lambda d: (True, ", ".join(x.title[:30] for x in d[:3]) or "none"))(
+        lib.devotionals(s["devotionals"])))
+    sermon = None
+    try:
+        sermon = lib.sermon_passage()
+    except Exception as e:
+        out(False, "sermon passage", repr(e))
+    if sermon:
+        out(True, "sermon passage", f"{sermon['title']} → {sermon['reference']} ({sermon['date'] or 'no date'})")
+        attempt("sermon commentaries", lambda: (lambda c: (bool(c), f"{len(c)}: " + "; ".join(
+            f"{x['myRating'] or x['rating']}★ {x['title'][:28]}" for x in c)))(
+            lib.sermon_commentaries(sermon, int(s["showcase_sermon_commentaries"]))))
+    else:
+        out(None, "sermon passage", "no sermon document with a passage")
+    attempt("showcase shelf", lambda: (lambda b: (len(b) > 0, f"{len(b)} books, {sum(x['cloud'] for x in b)} not downloaded; "
+            f"{sum(bool(x['cover']) for x in b)} with covers"))(lib.showcase(24)))
+
+    lines.append("")
+    lines.append("── Installation ──")
+    share = XDG_DATA
+    for name, path in [("runner registered", share / "krunner/dbusplugins/logos-plasma.desktop"),
+                       ("lookup shortcut entry", share / "applications/logos-plasma-lookup.desktop"),
+                       ("reminders timer unit", XDG_CONFIG / "systemd/user/logos-plasma-reminders.timer")]:
+        out(path.exists(), name, str(path))
+    try:
+        h = subprocess.run(["xdg-mime", "query", "default", "x-scheme-handler/logos4"],
+                           capture_output=True, text=True, timeout=5).stdout.strip()
+        out(bool(h), "logos4: handler", h or "none — run Ou Dedetai's installer")
+    except Exception as e:
+        out(None, "logos4: handler", repr(e))
+    try:
+        r = subprocess.run(["systemctl", "--user", "is-active", "logos-plasma-reminders.timer"],
+                           capture_output=True, text=True, timeout=5).stdout.strip()
+        out(r == "active", "reminders timer running", r)
+    except Exception as e:
+        out(None, "reminders timer running", repr(e))
+    try:
+        r = subprocess.run(["kpackagetool6", "-t", "Plasma/Applet", "--list"],
+                           capture_output=True, text=True, timeout=10).stdout
+        for w in ("LogosVerseOfTheDay", "LogosReadingPlans", "LogosShowcase"):
+            out(f"io.github.FaithlifeCommunity.{w}" in r, f"widget installed: {w}")
+    except FileNotFoundError:
+        out(None, "widgets installed", "kpackagetool6 not found (not KDE?)")
+    sc = XDG_CONFIG / "kglobalshortcutsrc"
+    out(sc.exists() and "logos-plasma-lookup" in sc.read_text(errors="ignore"), "global shortcut bound",
+        "Meta+Alt+L unless you changed it")
+
+    lines.append("")
+    lines.append("── Live KRunner plugin (over D-Bus, exactly what KRunner sees) ──")
+    try:
+        import dbus
+        bus = dbus.SessionBus()
+        runner = bus.get_object(BUS_NAME, OBJ_PATH)
+    except Exception as e:
+        out(None, "session bus", f"not reachable here ({e.__class__.__name__}); run this on your desktop")
+        return finish(lines, fails)
+    for q, want in SELFTEST_QUERIES:
+        try:
+            rows = runner.Match(q, dbus_interface=IFACE, timeout=20)
+        except Exception as e:
+            out(False, f"krunner “{q}”", repr(e)[:120])
+            continue
+        if not rows:
+            out(False, f"krunner “{q}”", "no rows")
+            continue
+        mid, title = str(rows[0][0]), str(rows[0][1])
+        ok = want in ("help", "any") or mid.startswith(("logos4:", "logosres:", "logosref:"))
+        out(ok, f"krunner “{q}”", f"{len(rows)} rows; first: {title[:50]}" + (f" → {mid[:70]}" if mid else ""))
+    try:
+        info = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications") \
+            .GetServerInformation(dbus_interface="org.freedesktop.Notifications")
+        out(True, "notification server", f"{info[0]} {info[2]}")
+    except Exception as e:
+        out(False, "notification server", repr(e)[:100])
+    try:
+        bus.get_object("org.kde.KWin", "/Scripting", introspect=False)
+        out(True, "KWin scripting (for bringing Logos to the front)")
+    except Exception as e:
+        out(False, "KWin scripting", repr(e)[:100])
+    if "--live" in sys.argv:
+        lines.append("")
+        lines.append("── Live: opens John 3:16 in Logos and checks it comes to the front ──")
+        cli_open(s["reference_url"].replace("{q}", "John3.16"))
+        time.sleep(8)
+        r = raise_logos()
+        out(bool(r.get("found")) and r.get("chosen") == r.get("activeAfter"), "Logos is the active window",
+            json.dumps({k: r.get(k) for k in ("found", "chosen", "activeAfter")}))
+    return finish(lines, fails)
+
+
+def platform_desc():
+    import platform
+    desk = os.environ.get("XDG_CURRENT_DESKTOP", "?")
+    sess = os.environ.get("XDG_SESSION_TYPE", "?")
+    return f"{desk} on {sess}, Python {platform.python_version()}"
+
+
+def finish(lines, fails):
+    lines.append("")
+    lines.append(f"{'All checks passed' if not fails else str(len(fails)) + ' failed: ' + ', '.join(fails)}")
+    text = "\n".join(lines) + "\n"
+    print(text, end="")
+    path = XDG_DATA / "logos-plasma" / "selftest.txt"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        print(f"(saved to {path})")
+    except OSError:
+        pass
+    return 1 if fails else 0
+
+
 if __name__ == "__main__":
-    if "--check" in sys.argv:
+    if "--selftest" in sys.argv:
+        sys.exit(selftest())
+    elif "--check" in sys.argv:
         check()
     elif "--raise" in sys.argv:
         r = raise_logos()
@@ -1963,7 +2132,7 @@ if __name__ == "__main__":
         count = int(sys.argv[i + 1]) if len(sys.argv) > i + 1 and sys.argv[i + 1].isdigit() else 12
         seed = time.time() if "--shuffle" in sys.argv else None
         books = []
-        n_sermon = int(cfg.settings.get("showcase_sermon_commentaries", 3))
+        n_sermon = int(cfg.settings.get("showcase_sermon_commentaries", 60))
         if n_sermon:
             try:
                 sermon = lib.sermon_passage()
