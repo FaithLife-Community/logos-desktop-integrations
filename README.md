@@ -26,12 +26,18 @@ Everything opens in your running Logos and brings its window to the front.
 Requires Plasma 6, Ou Dedetai (which registers the `logos4:` link handler) and
 `python3-dbus` / `python3-gi` (`gir1.2-gdkpixbuf-2.0` for book covers).
 
+Install or update with one command:
+
+    curl -fsSL https://raw.githubusercontent.com/FaithLife-Community/logos-plasma-integrations/main/get.sh | sh
+
+This downloads the latest release and runs its `install.sh`; run it again to update. Or from a clone:
+
     git clone https://github.com/FaithLife-Community/logos-plasma-integrations
     cd logos-plasma-integrations
     ./install.sh
 
-Re-run `./install.sh` to update. `./uninstall.sh` removes everything except your settings.
-The installer doesn't restart KRunner or Plasma.
+To uninstall: `sh ~/.local/share/logos-plasma/uninstall.sh` (removes everything except your
+settings in `~/.config/logos-plasma`). The installer doesn't restart KRunner or Plasma.
 
 ## KRunner commands
 

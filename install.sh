@@ -30,6 +30,7 @@ fi
 
 # ── Backend + config ─────────────────────────────────────────────────────────
 install -Dm755 "$here/backend/logos_plasma.py" "$data/logos-plasma/logos_plasma.py"
+install -Dm755 "$here/uninstall.sh" "$data/logos-plasma/uninstall.sh"
 mkdir -p "$conf/logos-plasma"
 if [ ! -e "$conf/logos-plasma/commands.toml" ]; then
     if [ -e "$conf/logos-krunner/commands.toml" ] && grep -q '^\[settings\]' "$conf/logos-krunner/commands.toml"; then
@@ -158,4 +159,6 @@ Done.
   Copy a reference anywhere, then Meta+Alt+L to open it in Logos (may need a re-login the first time).
   Widgets: right-click the desktop or panel → Add Widgets → search "Logos".
   If an updated widget still looks old: systemctl --user restart plasma-plasmashell
+  Check everything:  python3 ~/.local/share/logos-plasma/logos_plasma.py --selftest
+  Uninstall:         sh ~/.local/share/logos-plasma/uninstall.sh
 EOF
