@@ -9,7 +9,7 @@ rm -f "$data/krunner/dbusplugins/logos-plasma.desktop" \
 rm -rf "$data/logos-plasma"
 systemctl --user disable --now logos-plasma-reminders.timer >/dev/null 2>&1
 rm -f "${XDG_CONFIG_HOME:-$HOME/.config}"/systemd/user/logos-plasma-reminders.* \
-      "$data/applications/logos-plasma-lookup.desktop"
+      "$data/applications/logos-plasma-lookup.desktop" "$data/applications/logos-plasma.desktop"
 kwriteconfig6 --file kglobalshortcutsrc --group services --group logos-plasma-lookup.desktop --key _launch --delete
 kbuildsycoca6 >/dev/null 2>&1
 kwriteconfig6 --file krunnerrc --group Plugins --key logos-plasmaEnabled --delete

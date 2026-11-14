@@ -324,7 +324,7 @@ def notify(summary, body="", icon="logos-plasma", actions=(), bus=None, timeout=
                                           "/org/freedesktop/Notifications"),
                            "org.freedesktop.Notifications")
         return int(n.Notify("Logos", 0, icon, summary, body, dbus.Array(actions, signature="s"),
-                            dbus.Dictionary({"desktop-entry": "logos-plasma-lookup"}, signature="sv"),
+                            dbus.Dictionary({"desktop-entry": "logos-plasma"}, signature="sv"),
                             timeout))
     except Exception as e:
         log(f"notification failed: {e}")
@@ -1461,6 +1461,11 @@ def main_service():
                              "logos-plasma", LOW, 0.29,
                              props(subtext=f"e.g. {o}{self.lib.bibles[0].key}; type 'logos esv' to filter",
                                    actions=NO_ACTIONS)))
+            extras = [("John 3:16  —  any Bible reference", "Opens in your preferred Bible"),
+                      ("Meta+Alt+L  —  Look up in Logos", "Opens the reference (or word) in the clipboard")]
+            for text, sub in extras:
+                if not flt or flt in text.lower():
+                    rows.append(("", text, "logos-plasma", LOW, 0.28, props(subtext=sub, actions=NO_ACTIONS)))
             return rows[:40]
 
         # launching ------------------------------------------------------------

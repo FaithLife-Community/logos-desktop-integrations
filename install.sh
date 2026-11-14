@@ -80,6 +80,19 @@ pkill -f "$data/logos-plasma/logos_plasma.py" 2>/dev/null || true
 kwriteconfig6 --file krunnerrc --group Plugins --key logos-plasmaEnabled --notify false
 kwriteconfig6 --file krunnerrc --group Plugins --key logos-plasmaEnabled --notify true
 
+# ── App identity for notifications ("Logos" in the popup and in
+#    System Settings → Notifications). Launching it just brings Logos forward.
+install -Dm644 /dev/stdin "$data/applications/logos-plasma.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Logos
+Comment=Logos Bible Software integrations for Plasma
+Icon=logos-plasma
+Exec=/usr/bin/python3 $data/logos-plasma/logos_plasma.py --focus
+NoDisplay=true
+X-GNOME-UsesNotifications=true
+EOF
+
 # ── "Look up in Logos" global shortcut (Meta+Alt+L) ─────────────────────────
 # Opens the Bible reference in the clipboard in your preferred Bible (a single word goes to
 # Bible Word Study). Change the key in System Settings → Shortcuts → "Look up in Logos".
