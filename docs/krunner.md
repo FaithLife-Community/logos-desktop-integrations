@@ -52,6 +52,7 @@ Your top Bibles are the ones you open most, or follow Logos's **Prioritize** lis
 | `ol bavinck` | Open a book by title, author or abbreviation (with covers). |
 | `or` | Books you opened recently; Enter reopens one. `or calvin` filters them. |
 | `lay` | Your saved layouts; Enter switches Logos to one. `lay sermon` filters them. |
+| `lay passage John 3:16` | Opens a layout with its Bible (and everything linked to it) at that passage. |
 
 ## Every day
 

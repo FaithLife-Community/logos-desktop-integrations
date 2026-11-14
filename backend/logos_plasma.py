@@ -282,7 +282,29 @@ _REF_RE = re.compile(
     r"|\s*[-\u2013\u2014]\s*(\d{1,3}))?(?![\w:])", re.I)
 
 
-def find_references(text):
+def split_reference(text):
+    """'passage john 3:16' → ('John 3:16', 'passage'): a reference typed at the end of a
+    query, and the words before it. Lowercase abbreviations count here (typed on purpose)."""
+    words = (text or "").split()
+
+    def single(ws):
+        t = " ".join(ws)
+        ms = list(_REF_RE.finditer(t))
+        if len(ms) != 1 or ms[0].start() != 0 or ms[0].end() != len(t):
+            return ""
+        r = find_references(t, loose=True)
+        return r[0] if len(r) == 1 else ""
+
+    for i in range(len(words)):
+        ref = single(words[i:])
+        if ref:  # drop leading words the regex took as part of the book while the reference stays
+            while i + 1 < len(words) and single(words[i + 1:]) == ref:
+                i += 1
+            return ref, " ".join(words[:i])
+    return "", text
+
+
+def find_references(text, loose=False):
     """Bible references in free text → ['John 3:16', '1 Corinthians 13:4-7', …] (in order)."""
     out = []
     for m in _REF_RE.finditer(text or ""):
@@ -300,7 +322,7 @@ def find_references(text):
                 tail = " ".join(words[i:])
                 # short abbreviations only count when capitalised ("is 5" isn't Isaiah)
                 letters = re.sub(r"[^a-z]", "", key)
-                if len(letters) <= 3 and not tail.lstrip("123 ")[:1].isupper():
+                if len(letters) <= 3 and not loose and not tail.lstrip("123 ")[:1].isupper():
                     continue
                 num = BOOK_LOOKUP[key]
                 break
@@ -1510,14 +1532,18 @@ def main_service():
             return rows
 
         def layout_rows(self, flt):
+            # "lay passage john 3:16": the reference is cut out; the other words filter layouts
+            ref, flt = split_reference(flt)
             words = flt.lower().split()
             names = [n for n in self.lib.layouts() if all(w in n.lower() for w in words)]
             if not names:
                 return [("", "No saved layout matches" if flt else "No saved layouts",
                          "view-split-left-right", LOW, 0.5,
                          props(subtext="Save one in Logos: Layouts → Save as named layout", actions=NO_ACTIONS))]
-            return [(LAYOUT_PREFIX + n, n, "view-split-left-right", HIGHEST, 1.0 - i * 0.001,
-                     props(subtext="Logos layout", actions=NO_ACTIONS))
+            suffix = f"::{ref}" if ref else ""
+            return [(LAYOUT_PREFIX + n + suffix, f"{n}: {ref}" if ref else n, "view-split-left-right",
+                     HIGHEST, 1.0 - i * 0.001,
+                     props(subtext=f"Open this layout at {ref}" if ref else "Logos layout", actions=NO_ACTIONS))
                     for i, n in enumerate(names[:20])]
 
         def devotional_rows(self, flt):
@@ -1664,9 +1690,9 @@ def main_service():
         def launch(self, url):
             s = self.cfg.settings
             if url.startswith(LAYOUT_PREFIX):
-                name = url[len(LAYOUT_PREFIX):]
-                log(f"loading layout {name!r}")
-                load_layout(name, lambda result: self.layout_done(name, result))
+                name, _, ref = url[len(LAYOUT_PREFIX):].partition("::")
+                log(f"loading layout {name!r}" + (f" at {ref}" if ref else ""))
+                load_layout(name, lambda result: self.layout_done(name, result), ref=ref)
                 if s["focus"]:
                     self.stop_focusing()
                     self.focus_done = False
@@ -1875,17 +1901,22 @@ def windows_path(path):
 LAYOUT_VBS = XDG_DATA / "logos-plasma" / "loadlayout.vbs"
 
 
-def load_layout(name, done=None):
+def load_layout(name, done=None, ref=""):
     """Load a saved layout through Logos's COM API (LoadLayout), run with cscript inside
-    the Logos Wine prefix. Calls done(result) with "loaded", "missing" or "error: …";
-    without done, waits and returns the result."""
+    the Logos Wine prefix, optionally sending its Bible to a passage. Calls done(result) with
+    "loaded", "missing" or "error: …"; without done, waits and returns the result."""
     o = find_oudedetai()
     if not o:
         result = "error: Ou Dedetai not found"
         return done(result) if done else result
     argv = [o, "--wine", "cscript", "//nologo", windows_path(LAYOUT_VBS)] + name.split()
+    if ref:
+        argv += ["::"] + ref.split()
 
     def parse(out):
+        for line in (out or "").splitlines():
+            if line.strip().startswith("passage:"):
+                log(f"layout {line.strip()}")
         for line in (out or "").splitlines()[::-1]:
             line = line.strip()
             if line in ("loaded", "missing") or line.startswith("error:"):
@@ -1978,7 +2009,8 @@ def cli_open(url):
     except dbus.DBusException as e:
         log(f"runner service unavailable ({e.get_dbus_name()}: {e}); launching the handler directly")
     if url.startswith(LAYOUT_PREFIX):
-        log(f"layout: {load_layout(url[len(LAYOUT_PREFIX):])}")
+        name, _, ref = url[len(LAYOUT_PREFIX):].partition("::")
+        log(f"layout: {load_layout(name, ref=ref)}")
         return
     cfg = Config()
     cfg.maybe_reload()
@@ -2295,7 +2327,8 @@ if __name__ == "__main__":
         lib.refresh(cfg.settings["logos_data"])
         print("\n".join(lib.layouts()))
     elif "--layout" in sys.argv:
-        print(load_layout(" ".join(sys.argv[sys.argv.index("--layout") + 1:])))
+        name, _, ref = " ".join(sys.argv[sys.argv.index("--layout") + 1:]).partition("::")
+        print(load_layout(name.strip(), ref=ref.strip()))
     elif "--selftest" in sys.argv:
         sys.exit(selftest())
     elif "--check" in sys.argv:
