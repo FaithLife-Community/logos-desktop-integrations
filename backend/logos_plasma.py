@@ -83,7 +83,7 @@ DEFAULTS = {
         "reference_url": "logosref:Bible.{q}",
         "bare_references": True,     # typing just "John 3:16" in KRunner offers Logos
         "devotionals": [],           # titles/abbreviations; empty = your prioritized devotionals
-        "devotional_url": "logosres:{logosres};ref=DayOfYear.today",
+        "devotional_url": "logosres:{logosres}",  # Logos opens calendar devotionals at today
         "reminders": True,           # reading-plan notifications at each plan's reminder time
         "devotional_reminder": "",   # e.g. "07:30" for a daily devotional notification
     },

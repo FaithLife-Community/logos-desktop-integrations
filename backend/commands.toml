@@ -51,7 +51,7 @@
 # reference_url = "logosref:Bible.{q}"   # bare references & Meta+Alt+L; logosref = Logos's preferred Bible
 # bare_references = true
 # devotionals = []            # e.g. ["My Utmost for His Highest"]; empty = your prioritized ones
-# devotional_url = "logosres:{logosres};ref=DayOfYear.today"
+# devotional_url = "logosres:{logosres}"   # Logos opens calendar devotionals at today
 # reminders = true            # notify at each reading plan's reminder time (set in Logos)
 # devotional_reminder = ""    # e.g. "07:30" for a daily devotional notification
 

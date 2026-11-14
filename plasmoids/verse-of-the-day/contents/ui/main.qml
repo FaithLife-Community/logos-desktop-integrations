@@ -140,10 +140,23 @@ PlasmoidItem {
         Layout.minimumWidth: Kirigami.Units.gridUnit * 8
         Layout.minimumHeight: Kirigami.Units.gridUnit * 5
 
+        // Natural size of the picture, for cropping (sourceSize of a non-cropped copy).
+        Image {
+            id: probe
+            source: root.cfg.lastImage
+            visible: false
+            asynchronous: true
+        }
+
         Image {
             id: art
             anchors.fill: parent
             source: root.cfg.lastImage
+            // Optionally crop the reference footer printed along the bottom of the art.
+            sourceClipRect: root.cfg.cropFooter && probe.status === Image.Ready
+                ? Qt.rect(0, 0, probe.sourceSize.width,
+                          Math.round(probe.sourceSize.height * (100 - root.cfg.footerPercent) / 100))
+                : Qt.rect(0, 0, 0, 0)
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             cache: true

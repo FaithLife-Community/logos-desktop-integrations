@@ -9,6 +9,8 @@ KCM.SimpleKCM {
     property alias cfg_bible: bibleField.text
     property alias cfg_customUrl: customField.text
     property alias cfg_sourceUrl: sourceField.text
+    property alias cfg_cropFooter: cropFooter.checked
+    property alias cfg_footerPercent: footerPercent.value
     // cached data, not shown
     property string cfg_lastImage
     property string cfg_lastReference
@@ -47,6 +49,18 @@ KCM.SimpleKCM {
             text: i18n("{ref} is replaced with the verse, e.g. BibleESV.Ro6.4")
             font: Kirigami.Theme.smallFont
             opacity: 0.7
+        }
+        QQC2.CheckBox {
+            id: cropFooter
+            Kirigami.FormData.label: i18n("Picture:")
+            text: i18n("Crop off the reference footer")
+        }
+        QQC2.SpinBox {
+            id: footerPercent
+            enabled: cropFooter.checked
+            from: 1; to: 40
+            textFromValue: (v) => i18n("bottom %1%", v)
+            valueFromText: (t) => parseInt(t)
         }
         QQC2.TextField {
             id: sourceField
