@@ -858,8 +858,8 @@ class Library:
         return None
 
     def sermon_commentaries(self, sermon, count=3, open_url=""):
-        """Your own 4–5★ commentaries covering the sermon passage (topped up with the best
-        community-rated ones), each linking straight to the passage."""
+        """Your own 4–5★ commentaries covering the sermon passage (or, if you've rated none,
+        the best community-rated ones), each linking straight to the passage."""
         ref = sermon["reference"]
         readable = format_reference(ref) if ref.startswith("bible") else ref
         if ref.startswith("bible"):
@@ -880,8 +880,8 @@ class Library:
         mine = sorted([r for r in hits if (r[5] or 0) >= 4], key=lambda r: (-r[5], -(r[6] or 0) * (r[7] or 0)))
         rest = sorted([r for r in hits if (r[5] or 0) < 4 and (r[7] or 0) >= 15],
                       key=lambda r: -((r[6] or 0) * r[7] + 3.6 * 30) / (r[7] + 30))
-        # all of your own 4–5★ (up to `count`); community picks only to make up three
-        rest = rest[:max(0, 3 - len(mine))]
+        # your own 4–5★ ratings only; community ratings only when you've rated none for it
+        rest = [] if mine else rest[:3]
         q = encode(readable.replace("\u2013", "-"), ":,.")
         out = []
         for rec, rid, title, authors, _, mine_rating, rating, n, avail, alts in (mine + rest)[:count]:
