@@ -1055,13 +1055,17 @@ FOCUS_JS = r"""
             seen.push({cls: c, name: n, caption: cap, normal: !!w.normalWindow,
                        skipTaskbar: !!w.skipTaskbar, minimized: !!w.minimized,
                        w: Math.round(w.width), h: Math.round(w.height)});
-        if (!w.normalWindow || w.skipTaskbar) continue;
+        // Wine creates invisible 1×1 helper windows that KWin also calls "normal";
+        // only real, visible-sized windows count.
+        if (!w.normalWindow || w.skipTaskbar || w.width < 100 || w.height < 100) continue;
         if (want.indexOf(c) >= 0 || want.indexOf(n) >= 0) best = w;
     }
     if (best) {
         if (best.minimized) best.minimized = false;
+        if (typeof workspace.raiseWindow === "function") workspace.raiseWindow(best);
         if ("activeWindow" in workspace) workspace.activeWindow = best;
         else workspace.activeClient = best;
+        seen.push({chosen: String(best.caption)});
     }
     callDBus("%s", "%s", "%s", "FocusResult", best !== null, JSON.stringify(seen));
 })();
@@ -1608,9 +1612,12 @@ def focus_test():
     class Probe(dbus.service.Object):
         @dbus.service.method(INTERNAL_IFACE)
         def FocusResult(self, found, info=""):
-            print("Logos window raised:", bool(found))
-            for w in json.loads(info or "[]"):
-                print(" ", w)
+            items = json.loads(info or "[]")
+            chosen = [w["chosen"] for w in items if "chosen" in w]
+            print("Logos window raised:", bool(found), f"→ “{chosen[0]}”" if chosen else "")
+            for w in items:
+                if "chosen" not in w and (w.get("normal") or "-v" in sys.argv):
+                    print(" ", w)
             if not json.loads(info or "[]"):
                 print("  (no window with 'logos' or '.exe' in its class, name or title)")
             loop.quit()
