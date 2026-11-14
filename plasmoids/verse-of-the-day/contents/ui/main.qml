@@ -24,6 +24,8 @@ PlasmoidItem {
             return "logos4:Guide;t=Passage%20Guide;ref=" + logosRef
         case "exegeticalGuide":
             return "logos4:Guide;t=Exegetical%20Guide;ref=" + logosRef
+        case "layout":
+            return "layout:" + cfg.layout
         case "custom":
             return cfg.customUrl.replace("{ref}", logosRef)
         default:
@@ -32,7 +34,7 @@ PlasmoidItem {
     }
 
     function openInLogos() {
-        if (logosRef)
+        if (logosRef || cfg.clickAction === "layout")
             backend.openUrl(targetUrl())
     }
 

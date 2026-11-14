@@ -1,10 +1,10 @@
 #!/bin/sh
 # One-command install or update of Logos Plasma integrations from the latest release:
-#   curl -fsSL https://raw.githubusercontent.com/FaithLife-Community/logos-plasma-integrations/main/get.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/FaithLife-Community/logos-desktop-integrations/main/get.sh | sh
 # Downloads the release into a temporary folder, runs its install.sh, then removes the download.
 # To install a particular version instead: ... | sh -s v0.1.0
 set -eu
-repo=FaithLife-Community/logos-plasma-integrations
+repo=FaithLife-Community/logos-desktop-integrations
 tag=${1:-}
 if [ -z "$tag" ]; then
     tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" |

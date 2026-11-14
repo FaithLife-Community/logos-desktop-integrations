@@ -1,4 +1,7 @@
-# Logos Plasma integrations
+# Logos desktop integrations
+
+Desktop integrations for Logos Bible Software on Linux. Currently for **KDE Plasma 6**;
+GNOME support is planned.
 
 KDE Plasma 6 integrations for [Logos Bible Software](https://www.logos.com) running on Linux
 under Wine via [Ou Dedetai](https://github.com/FaithLife-Community/OuDedetai):
@@ -29,12 +32,12 @@ Requires Plasma 6, Ou Dedetai (which registers the `logos4:` link handler) and
 
 Install or update with one command:
 
-    curl -fsSL https://raw.githubusercontent.com/FaithLife-Community/logos-plasma-integrations/main/get.sh | sh
+    curl -fsSL https://raw.githubusercontent.com/FaithLife-Community/logos-desktop-integrations/main/get.sh | sh
 
 This downloads the latest release and runs its `install.sh`; run it again to update. Or from a clone:
 
-    git clone https://github.com/FaithLife-Community/logos-plasma-integrations
-    cd logos-plasma-integrations
+    git clone https://github.com/FaithLife-Community/logos-desktop-integrations
+    cd logos-desktop-integrations
     ./install.sh
 
 To uninstall: `sh ~/.local/share/logos-plasma/uninstall.sh` (removes everything except your
@@ -57,6 +60,8 @@ settings in `~/.config/logos-plasma`). The installer doesn't restart KRunner or 
 | `today` | Today's entry in your devotionals |
 | `ws agape` · `fb moses` | Bible Word Study · Factbook, with Logos's own descriptions to tell same-named entries apart |
 | `or` | Recently opened books |
+| `lay` | Your saved layouts: switch Logos to one |
+| `cv John 3:16` | Copy a passage as text, in your Copy Bible Verses style |
 | `John 3:16` | A bare reference opens in your preferred Bible |
 | `logos [filter]` | List commands |
 
