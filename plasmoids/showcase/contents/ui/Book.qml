@@ -110,6 +110,17 @@ Item {
         }
     }
 
+    // Not downloaded yet: Logos can crash opening these by link, so clicking explains instead.
+    Kirigami.Icon {
+        visible: !!book.info.cloud
+        source: "cloud-download"
+        width: Kirigami.Units.iconSizes.small
+        height: width
+        anchors { right: parent.right; top: parent.top; margins: Kirigami.Units.smallSpacing }
+        Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: height / 2
+                    color: Kirigami.Theme.backgroundColor; opacity: 0.85 }
+    }
+
     MouseArea {
         id: hit
         anchors.fill: parent
@@ -125,5 +136,6 @@ Item {
         delay: 500
         text: book.info.title + (book.info.authors ? "\n" + book.info.authors : "")
               + "\n★ " + book.info.rating + "  (" + book.info.ratings + ")"
+              + (book.info.cloud ? "\n" + i18n("Not downloaded yet") : "")
     }
 }

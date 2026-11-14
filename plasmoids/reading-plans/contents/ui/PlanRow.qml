@@ -163,8 +163,8 @@ ColumnLayout {
             required property var modelData
             Layout.fillWidth: true
             Layout.leftMargin: Kirigami.Units.gridUnit * 3
-            icon.name: "bookmarks"
-            text: modelData.label
+            icon.name: modelData.cloud ? "cloud-download" : "bookmarks"
+            text: modelData.label + (modelData.cloud ? "  " + i18n("(not downloaded)") : "")
             onClicked: row.openUrl(modelData.url)
         }
     }

@@ -85,6 +85,10 @@ DEFAULTS = {
         "devotionals": [],           # titles/abbreviations; empty = your prioritized devotionals
         "devotional_url": "logosres:{logosres}",  # Logos opens calendar devotionals at today
         "reminders": True,           # reading-plan notifications at each plan's reminder time
+        # Logos (under Wine) can crash when an external link opens a book that isn't
+        # downloaded yet. With this off, such links show a notification and bring Logos
+        # forward instead, so you can download the book from the Library.
+        "link_cloud_books": False,
         "devotional_reminder": "",   # e.g. "07:30" for a daily devotional notification
     },
 }
@@ -668,7 +672,10 @@ class Library:
                         label = sess.get("title") or title
                         short = None
                         url = f"logosres:{lres}"
-                    readings.append({"label": label, "short": short, "url": url, "resourceId": rid})
+                    avail = self.db().execute("SELECT Availability FROM Records WHERE ResourceId = ?",
+                                              (rid,)).fetchone() if rid else None
+                    readings.append({"label": label, "short": short, "url": url, "resourceId": rid,
+                                     "cloud": bool(avail and avail[0] == 1)})
             date = sess.get("date", "")
             behind = None
             try:
@@ -802,7 +809,7 @@ class Library:
                       "text.monograph.service-book", "text.monograph.cross-references.bible")
         rows = self.db().execute(f"""
             SELECT r.RecordId, r.ResourceId, r.Title, r.Authors, r.Series, r.Type,
-                   r.CommunityRating, r.CommunityRatingCount,
+                   r.CommunityRating, r.CommunityRatingCount, r.Availability,
                    (SELECT group_concat(AlternateResourceId, ' ') FROM AlternateResourceIds a
                     WHERE a.RecordId = r.RecordId)
             FROM Records r JOIN Images i ON i.RecordId = r.RecordId
@@ -812,12 +819,14 @@ class Library:
               AND r.CommunityRatingCount >= ? AND i.Image IS NOT NULL""",
             (*skip_types, min_ratings)).fetchall()
         # Bayesian average: books with few ratings are pulled towards the library's mean rating.
-        prior = sum(r[6] * r[7] for r in rows) / max(1, sum(r[7] for r in rows))
+        prior = sum(r[6] * r[7] for r in rows) / max(1, sum(r[7] for r in rows))  # rating × count
         weight = 30
         scored = []
-        for rec, rid, title, authors, series, typ, rating, n, alts in rows:
+        cloud = {}
+        for rec, rid, title, authors, series, typ, rating, n, avail, alts in rows:
             if rid in read:
                 continue
+            cloud[rid] = avail == 1
             score = (rating * n + prior * weight) / (n + weight)
             scored.append((score, rec, rid, title, authors or "", series or "", typ, rating, n, alts))
         scored.sort(reverse=True)
@@ -855,8 +864,24 @@ class Library:
                                                       else f"{names[0]} et al.") if names else ""
             out.append({"title": title, "authors": byline, "series": series,
                         "rating": round(rating, 1), "ratings": n, "resourceId": rid,
+                        "cloud": cloud.get(rid, False),
                         "url": f"logosres:{logosres_id(rid, alts)}", "cover": self.cover_file(rid)})
         return out
+
+    def resource_for_link(self, url):
+        """(title, availability) of the book a logosres: link opens, or None.
+        Availability: 2 = downloaded, 1 = owned but in the cloud only."""
+        m = re.match(r"logosres:([^;]+)", url or "")
+        if not m:
+            return None
+        lres = urllib.parse.unquote(m.group(1))
+        row = self.db().execute("""
+            SELECT r.Title, r.Availability FROM Records r
+            WHERE r.ResourceId = ? COLLATE NOCASE
+               OR r.RecordId IN (SELECT RecordId FROM AlternateResourceIds
+                                 WHERE AlternateResourceId IN (?, ?) COLLATE NOCASE)
+            ORDER BY r.Availability DESC LIMIT 1""", (lres, lres, "lls:" + lres)).fetchone()
+        return (row[0], row[1]) if row else None
 
     def cover_file(self, resource_id):
         """Write the resource's cover thumbnail to the cache and return its path (for widgets)."""
@@ -1434,6 +1459,28 @@ def main_service():
         # launching ------------------------------------------------------------
         def launch(self, url):
             s = self.cfg.settings
+            if not s["link_cloud_books"]:
+                try:
+                    self.refresh()
+                    info = self.lib.resource_for_link(url)
+                except Exception as e:
+                    info = None
+                    log(f"availability check failed: {e}")
+                if info and info[1] == 1:
+                    title = info[0]
+                    log(f"not opening cloud-only book by link (crashes Logos under Wine): {title}")
+                    try:
+                        self.bus.get_object("org.kde.klipper", "/klipper", introspect=False).setClipboardContents(
+                            title, dbus_interface="org.kde.klipper.klipper")
+                    except Exception:
+                        pass
+                    notify("Download this book in Logos first",
+                           f"“{title}” isn't downloaded yet, and opening it by link can crash Logos. "
+                           "Its title is on the clipboard: paste it into Logos's Library to download it.",
+                           bus=self.bus)
+                    self.focus_deadline = time.monotonic() + 5
+                    GLib.timeout_add(200, self.focus)
+                    return
             ctx = Gio.AppLaunchContext()
             if self.token:
                 ctx.setenv("XDG_ACTIVATION_TOKEN", self.token)
