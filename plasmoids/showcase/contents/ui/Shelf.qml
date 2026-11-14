@@ -61,10 +61,10 @@ ColumnLayout {
         id: sermonGrid
         visible: shelf.sermon !== null
         shelf: shelf
-        model: shelf.sermonBooks
+        model: shelf.sermonBooks.slice(0, columns)  // one shelf: as many as fit the row
         interactive: false
         Layout.fillWidth: true
-        Layout.preferredHeight: shelf.shelfRows(count, sermonGrid) * cellHeight
+        Layout.preferredHeight: cellHeight
     }
 
     Kirigami.Heading {

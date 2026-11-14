@@ -45,7 +45,7 @@ XDG_CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", HOME / ".config"))
 XDG_DATA = Path(os.environ.get("XDG_DATA_HOME", HOME / ".local/share"))
 CONFIG_PATH = XDG_CONFIG / "logos-plasma" / "commands.toml"
 
-HIGHEST, LOW = 100, 30  # KRunner CategoryRelevance values
+HIGHEST, MODERATE, LOW = 100, 50, 30  # KRunner CategoryRelevance values
 
 DEFAULTS = {
     "aliases": {
@@ -89,7 +89,7 @@ DEFAULTS = {
         # Set to false to get a notification (title on the clipboard) instead of the link,
         # if opening such books from outside Logos ever misbehaves.
         "link_cloud_books": True,
-        "showcase_sermon_commentaries": 3,  # your 4–5★ commentaries on your next sermon's passage
+        "showcase_sermon_commentaries": 12,  # at most this many of your 4–5★ commentaries on the passage
         "devotional_reminder": "",   # e.g. "07:30" for a daily devotional notification
     },
 }
@@ -880,6 +880,8 @@ class Library:
         mine = sorted([r for r in hits if (r[5] or 0) >= 4], key=lambda r: (-r[5], -(r[6] or 0) * (r[7] or 0)))
         rest = sorted([r for r in hits if (r[5] or 0) < 4 and (r[7] or 0) >= 15],
                       key=lambda r: -((r[6] or 0) * r[7] + 3.6 * 30) / (r[7] + 30))
+        # all of your own 4–5★ (up to `count`); community picks only to make up three
+        rest = rest[:max(0, 3 - len(mine))]
         q = encode(readable.replace("\u2013", "-"), ":,.")
         out = []
         for rec, rid, title, authors, _, mine_rating, rating, n, avail, alts in (mine + rest)[:count]:
@@ -1607,7 +1609,8 @@ def main_service():
                                   "Meta+Alt+L looks up a copied reference", "view-calendar-day"),
                     (f"{a.get('help','logos')} <word> lists matching commands", "e.g. logos search · logos fb", "help-about"),
                 ]
-                return [("", title, icon, HIGHEST, 0.9 - i * 0.01, props(subtext=sub, actions=NO_ACTIONS))
+                # Moderate, so typing "logos" + Enter still launches the Logos app first.
+                return [("", title, icon, MODERATE, 0.9 - i * 0.01, props(subtext=sub, actions=NO_ACTIONS))
                         for i, (title, sub, icon) in enumerate(groups)]
             rows, seen = [], set()
             for alias, c in sorted(self.cmds.items()):
@@ -1968,7 +1971,7 @@ if __name__ == "__main__":
                     books = lib.sermon_commentaries(sermon, n_sermon)
             except Exception as e:
                 log(f"sermon commentaries: {e!r}")
-        books += lib.showcase(max(1, count - len(books)), seed)
+        books += lib.showcase(count, seed)
         print(json.dumps(books, ensure_ascii=False))
     elif "--lookup" in sys.argv:
         cli_lookup(selection="--selection" in sys.argv)
