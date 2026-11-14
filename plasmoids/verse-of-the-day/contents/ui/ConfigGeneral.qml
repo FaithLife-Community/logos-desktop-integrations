@@ -8,6 +8,7 @@ KCM.SimpleKCM {
     property string cfg_clickAction
     property alias cfg_bible: bibleField.text
     property alias cfg_customUrl: customField.text
+    property alias cfg_layout: layoutField.text
     property alias cfg_sourceUrl: sourceField.text
     property alias cfg_cropFooter: cropFooter.checked
     property alias cfg_footerPercent: footerPercent.value
@@ -28,6 +29,7 @@ KCM.SimpleKCM {
                 { text: i18n("The verse in a Bible"), value: "bible" },
                 { text: i18n("Passage Guide"), value: "passageGuide" },
                 { text: i18n("Exegetical Guide"), value: "exegeticalGuide" },
+                { text: i18n("A saved layout"), value: "layout" },
                 { text: i18n("Custom Logos URL"), value: "custom" }
             ]
             Component.onCompleted: currentIndex = Math.max(0, indexOfValue(cfg_clickAction))
@@ -38,6 +40,20 @@ KCM.SimpleKCM {
             Kirigami.FormData.label: i18n("Bible:")
             enabled: actionBox.currentValue === "bible"
             placeholderText: i18n("ESV (from the site), or a logosres id e.g. lgcystndrdbblsb")
+        }
+        QQC2.TextField {
+            id: layoutField
+            Kirigami.FormData.label: i18n("Layout:")
+            enabled: actionBox.currentValue === "layout"
+            placeholderText: i18n("Verse of the Day")
+        }
+        QQC2.Label {
+            visible: actionBox.currentValue === "layout"
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+            wrapMode: Text.Wrap
+            font: Kirigami.Theme.smallFont
+            opacity: 0.7
+            text: i18n("The name of a layout saved in Logos (Layouts → Save as named layout). In KRunner, “lay” lists them.")
         }
         QQC2.TextField {
             id: customField

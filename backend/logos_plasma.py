@@ -53,6 +53,7 @@ DEFAULTS = {
         "library": "ol", "compare": "otc", "help": "logos",
         "lexicon": "lex", "top": "stb", "everything": "sll", "plans": "rp",
         "wordstudy": "ws", "factbook": "fb", "recent": "or", "devotional": "today",
+        "layout": "lay",
     },
     "settings": {
         "logos_data": "",            # path to .../AppData/Local/Logos; empty = find Ou Dedetai's
@@ -770,6 +771,16 @@ class Library:
                             "description": (desc[0] if desc else "") or "", "mentions": mentions})
         return out
 
+    def layouts(self):
+        """Your saved layouts' names, as in Logos's Layouts menu (no autosaves)."""
+        path = self.docs_dir / "LayoutManager" / "layouts.db" if self.docs_dir else None
+        if not path or not path.exists():
+            return []
+        with ro_connect(path) as db:
+            rows = db.execute("SELECT Title, MAX(CreatedDate) FROM Layouts WHERE IsDeleted = 0 "
+                              "AND Title <> '' AND Title <> 'Application Closed' GROUP BY Title").fetchall()
+        return sorted((r[0] for r in rows), key=str.casefold)
+
     def recent(self, open_url, limit=10):
         path = self.data_dir / "HistoryManager" / "history.db" if self.data_dir else None
         if not path or not path.exists():
@@ -1174,6 +1185,7 @@ def build_commands(cfg, lib):
         ("wordstudy", "Bible Word Study", "a word or lemma"),
         ("factbook", "Factbook", "a person, place, topic…"),
         ("recent", "Recently opened", "optional filter"),
+        ("layout", "Open a layout", "optional filter"),
         ("devotional", "Today's devotional", "optional filter"),
     ]
     for kind, name, hint in builtin:
@@ -1365,6 +1377,8 @@ def main_service():
                 return self.plan_rows(arg)
             if cmd.kind == "recent":
                 return self.recent_rows(arg)
+            if cmd.kind == "layout":
+                return self.layout_rows(arg)
             if cmd.kind == "devotional":
                 return self.devotional_rows(arg)
             if not arg:
@@ -1495,6 +1509,17 @@ def main_service():
                 rows.append((r["url"], r["title"], "document-open-recent", HIGHEST, 1.0 - i * 0.01, p))
             return rows
 
+        def layout_rows(self, flt):
+            words = flt.lower().split()
+            names = [n for n in self.lib.layouts() if all(w in n.lower() for w in words)]
+            if not names:
+                return [("", "No saved layout matches" if flt else "No saved layouts",
+                         "view-split-left-right", LOW, 0.5,
+                         props(subtext="Save one in Logos: Layouts → Save as named layout", actions=NO_ACTIONS))]
+            return [(LAYOUT_PREFIX + n, n, "view-split-left-right", HIGHEST, 1.0 - i * 0.001,
+                     props(subtext="Logos layout", actions=NO_ACTIONS))
+                    for i, n in enumerate(names[:20])]
+
         def devotional_rows(self, flt):
             s = self.cfg.settings
             devs = self.lib.devotionals(s["devotionals"]) if not flt else [
@@ -1612,6 +1637,7 @@ def main_service():
                                                 + " · ".join(c.alias for c in self.cmds.values() if c.kind == "url")[:60],
                      "view-list-details"),
                     ("Every day", f"{a.get('plans','rp')} (reading plans) · {a.get('devotional','today')} (devotional) · "
+                                  f"{a.get('layout','lay')} (your layouts) · "
                                   "Meta+Alt+L looks up a copied reference", "view-calendar-day"),
                     (f"{a.get('help','logos')} <word> lists matching commands", "e.g. logos search · logos fb", "help-about"),
                 ]
@@ -1637,6 +1663,16 @@ def main_service():
         # launching ------------------------------------------------------------
         def launch(self, url):
             s = self.cfg.settings
+            if url.startswith(LAYOUT_PREFIX):
+                name = url[len(LAYOUT_PREFIX):]
+                log(f"loading layout {name!r}")
+                load_layout(name, lambda result: self.layout_done(name, result))
+                if s["focus"]:
+                    self.stop_focusing()
+                    self.focus_done = False
+                    self.focus_timers = [GLib.timeout_add(int(ms), self.focus)
+                                         for ms in s.get("focus_attempts_ms", (350, 1200, 2500, 4000, 6000, 9000))]
+                return
             if not s["link_cloud_books"]:
                 try:
                     self.refresh()
@@ -1700,6 +1736,14 @@ def main_service():
                 self.stop_focusing()
             elif not r.get("found") and time.monotonic() < self.focus_deadline:
                 self.focus_timers.append(GLib.timeout_add(2000, self.focus))  # Logos still starting
+
+        def layout_done(self, name, result):
+            log(f"layout {name!r}: {result}")
+            if result == "missing":
+                notify("No such Logos layout", f"There's no saved layout called “{name}”.", bus=self.bus)
+            elif result != "loaded":
+                notify("Couldn't open the layout", f"{name}: {result}\n"
+                       "Try: python3 ~/.local/share/logos-plasma/logos_plasma.py --register-com", bus=self.bus)
 
         def stop_focusing(self):
             self.focus_done = True
@@ -1805,6 +1849,124 @@ def cli_reading_plans():
     print(json.dumps(plans, ensure_ascii=False))
 
 
+LAYOUT_PREFIX = "layout:"  # our own scheme: layout:<name> opens a saved Logos layout
+
+
+def find_oudedetai():
+    """Ou Dedetai's launcher, which runs programs in Logos's Wine prefix (--wine)."""
+    for p in sorted(glob.glob(str(XDG_DATA / "FaithLife-Community" / "*" / "oudedetai"))):
+        if os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def wine_prefix(data_dir):
+    """…/<prefix>/drive_c/users/<you>/AppData/Local/Logos/Data/<user> → <prefix>"""
+    for parent in Path(data_dir).parents:
+        if parent.name == "drive_c":
+            return parent.parent
+    return None
+
+
+def windows_path(path):
+    return "Z:" + str(path).replace("/", "\\")
+
+
+LAYOUT_VBS = XDG_DATA / "logos-plasma" / "loadlayout.vbs"
+
+
+def load_layout(name, done=None):
+    """Load a saved layout through Logos's COM API (LoadLayout), run with cscript inside
+    the Logos Wine prefix. Calls done(result) with "loaded", "missing" or "error: …";
+    without done, waits and returns the result."""
+    o = find_oudedetai()
+    if not o:
+        result = "error: Ou Dedetai not found"
+        return done(result) if done else result
+    argv = [o, "--wine", "cscript", "//nologo", windows_path(LAYOUT_VBS)] + name.split()
+
+    def parse(out):
+        for line in (out or "").splitlines()[::-1]:
+            line = line.strip()
+            if line in ("loaded", "missing") or line.startswith("error:"):
+                return line
+        return "error: no answer from Logos (" + ((out or "").strip().splitlines() or ["nothing printed"])[-1][:100] + ")"
+
+    if done is None:
+        r = subprocess_run(argv, timeout=180)
+        return parse(r)
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio
+    proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
+
+    def finished(p, res):
+        try:
+            _, out, _ = p.communicate_utf8_finish(res)
+        except Exception as e:
+            out = f"error: {e}"
+        done(parse(out))
+    proc.communicate_utf8_async(None, None, finished)
+
+
+def subprocess_run(argv, timeout=60):
+    import subprocess
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        return r.stdout + r.stderr
+    except Exception as e:
+        return f"error: {e}"
+
+
+def com_registered(prefix):
+    try:
+        return "[Software\\\\Classes\\\\LogosBibleSoftware.Launcher]" in \
+            (Path(prefix) / "system.reg").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def register_com(data_dir, force=False):
+    """Logos registers its COM API for the current user only, and Wine looks COM classes up
+    machine-wide, so CreateObject fails. Copy Logos's own registration from the prefix's
+    user.reg to HKLM\\Software\\Classes. Returns a short status string."""
+    prefix = wine_prefix(data_dir) if data_dir else None
+    if not prefix:
+        return "Logos's Wine prefix not found"
+    if com_registered(prefix) and not force:
+        return "already registered"
+    o = find_oudedetai()
+    if not o:
+        return "Ou Dedetai not found"
+    text = (prefix / "user.reg").read_text(encoding="utf-8", errors="replace")
+    sections = []
+    for sec in re.split(r"\n(?=\[)", text):
+        m = re.match(r"\[([^\]]+)\][^\n]*\n(.*)", sec, re.S)
+        if m and m.group(1).startswith("Software\\\\Classes\\\\"):
+            sections.append((m.group(1)[len("Software\\\\Classes\\\\"):], m.group(2)))
+    guids = set()
+    for name, body in sections:
+        if "LogosCom.exe" in body or re.match(r"LogosBibleSoftware\.(Launcher|Application)", name):
+            guids |= {g.upper() for g in re.findall(r"\{([0-9A-Fa-f-]{36})\}", name + body)}
+    for name, body in sections:  # interfaces of the same type library
+        if any(g in body.upper() for g in guids):
+            guids |= {g.upper() for g in re.findall(r"\{([0-9A-Fa-f-]{36})\}", name)}
+    guids.discard("00020424-0000-0000-C000-000000000046")  # oleaut's marshaller, already system-wide
+    out = ["REGEDIT4", ""]
+    for name, body in sections:
+        if re.match(r"LogosBibleSoftware\.(Launcher|Application)", name) or any(g in name.upper() for g in guids):
+            out.append("[HKEY_LOCAL_MACHINE\\Software\\Classes\\" + name.replace("\\\\", "\\") + "]")
+            out += [l for l in body.splitlines() if re.match(r'^(@|"[^"]*")=("|dword:)', l)]
+            out.append("")
+    if len(out) < 6:
+        return "Logos's COM registration not found in the prefix (is Logos installed?)"
+    reg = XDG_DATA / "logos-plasma" / "logos-com-hklm.reg"
+    reg.parent.mkdir(parents=True, exist_ok=True)
+    reg.write_text("\r\n".join(out) + "\r\n")
+    subprocess_run([o, "--wine", "regedit", "/S", windows_path(reg)], timeout=120)
+    time.sleep(2)  # wineserver writes system.reg shortly after
+    return "registered" if com_registered(prefix) else "registration didn't take (see logos-com-hklm.reg)"
+
+
 def cli_open(url):
     """Open a Logos URL through the runner service (handler, no terminal, then focus).
     If the service can't be reached, run the handler's command line directly. Never use
@@ -1815,6 +1977,9 @@ def cli_open(url):
         return
     except dbus.DBusException as e:
         log(f"runner service unavailable ({e.get_dbus_name()}: {e}); launching the handler directly")
+    if url.startswith(LAYOUT_PREFIX):
+        log(f"layout: {load_layout(url[len(LAYOUT_PREFIX):])}")
+        return
     cfg = Config()
     cfg.maybe_reload()
     launch_with_handler(url, cfg.settings["handler"])
@@ -1955,6 +2120,7 @@ SELFTEST_QUERIES = [  # (query, what a good first row looks like)
     ("s love", "url"), ("stb love", "url"), ("'faith hope love", "url"), (".grace peace", "url"),
     ("lex logos", "url"), ("ws agape", "url"), ("fb jesus", "url"), ("ol genesis", "url"),
     ("or", "url"), ("otc john 1:1", "url"), ("opg john 1", "url"), ("rp", "any"), ("today", "url"),
+    ("lay", "layout"),
 ]
 
 
@@ -2013,6 +2179,8 @@ def selftest():
             lib.sermon_commentaries(sermon, int(s["showcase_sermon_commentaries"]))))
     else:
         out(None, "sermon passage", "no sermon document with a passage")
+    attempt("saved layouts", lambda: (lambda l: (True, f"{len(l)}: " + ", ".join(l[:6]) + ("…" if len(l) > 6 else "")))(
+        lib.layouts()))
     attempt("showcase shelf", lambda: (lambda b: (len(b) > 0, f"{len(b)} books, {sum(x['cloud'] for x in b)} not downloaded; "
             f"{sum(bool(x['cover']) for x in b)} with covers"))(lib.showcase(24)))
 
@@ -2042,6 +2210,9 @@ def selftest():
             out(f"io.github.FaithlifeCommunity.{w}" in r, f"widget installed: {w}")
     except FileNotFoundError:
         out(None, "widgets installed", "kpackagetool6 not found (not KDE?)")
+    prefix = wine_prefix(lib.data_dir)
+    out(bool(prefix) and com_registered(prefix), "Logos COM API registered (for layouts)",
+        "run logos_plasma.py --register-com" if not (prefix and com_registered(prefix)) else str(prefix))
     sc = XDG_CONFIG / "kglobalshortcutsrc"
     out(sc.exists() and "logos-plasma-lookup" in sc.read_text(errors="ignore"), "global shortcut bound",
         "Meta+Alt+L unless you changed it")
@@ -2065,7 +2236,7 @@ def selftest():
             out(False, f"krunner “{q}”", "no rows")
             continue
         mid, title = str(rows[0][0]), str(rows[0][1])
-        ok = want in ("help", "any") or mid.startswith(("logos4:", "logosres:", "logosref:"))
+        ok = want in ("help", "any") or mid.startswith(("logos4:", "logosres:", "logosref:", LAYOUT_PREFIX))
         out(ok, f"krunner “{q}”", f"{len(rows)} rows; first: {title[:50]}" + (f" → {mid[:70]}" if mid else ""))
     try:
         info = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications") \
@@ -2112,7 +2283,20 @@ def finish(lines, fails):
 
 
 if __name__ == "__main__":
-    if "--selftest" in sys.argv:
+    if "--register-com" in sys.argv:
+        cfg = Config()
+        cfg.maybe_reload()
+        data, _ = find_logos_dirs(cfg.settings["logos_data"])
+        print("Logos COM API:", register_com(data, force="--force" in sys.argv))
+    elif "--layouts" in sys.argv:
+        cfg = Config()
+        cfg.maybe_reload()
+        lib = Library()
+        lib.refresh(cfg.settings["logos_data"])
+        print("\n".join(lib.layouts()))
+    elif "--layout" in sys.argv:
+        print(load_layout(" ".join(sys.argv[sys.argv.index("--layout") + 1:])))
+    elif "--selftest" in sys.argv:
         sys.exit(selftest())
     elif "--check" in sys.argv:
         check()

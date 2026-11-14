@@ -79,3 +79,17 @@ A systemd user timer runs `logos_plasma.py --check-reminders` every five minutes
 service sends one notification per plan per day, once the plan's reminder time (set in Logos)
 has passed and its next session is due. The service handles the notification's "Read now"
 button. Which plans have been reminded is stored in `~/.local/state/logos-plasma/reminders.json`.
+
+## Layouts
+
+Logos has no link for opening a layout, but its documented COM API has
+`LoadLayout(name)`. `lay` in KRunner and the Verse of the Day widget's "A saved layout" option
+run a small VBScript (`loadlayout.vbs`) with `cscript` inside the Logos Wine prefix, through
+Ou Dedetai's `--wine`. The list of layouts is read from `LayoutManager/layouts.db`.
+
+Logos registers its COM server (`LogosCom.exe`) for the current user only
+(`HKEY_CURRENT_USER\Software\Classes`), and Wine looks COM classes up machine-wide, so
+`CreateObject` fails with "ActiveX component can't create object". The installer runs
+`logos_plasma.py --register-com`, which copies Logos's own registration, unchanged, from the
+prefix's `user.reg` to `HKEY_LOCAL_MACHINE\Software\Classes` (via `regedit /S`; the file it
+imports is kept as `~/.local/share/logos-plasma/logos-com-hklm.reg`).

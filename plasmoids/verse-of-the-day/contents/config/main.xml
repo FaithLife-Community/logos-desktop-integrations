@@ -4,10 +4,12 @@
       xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
   <kcfgfile name=""/>
   <group name="General">
-    <!-- bible | passageGuide | exegeticalGuide | custom -->
+    <!-- bible | passageGuide | exegeticalGuide | layout | custom -->
     <entry name="clickAction" type="String"><default>bible</default></entry>
     <!-- logosres id of the Bible to open, e.g. "lgcystndrdbblsb"; empty = the site's (ESV) -->
     <entry name="bible" type="String"><default></default></entry>
+    <!-- name of a saved Logos layout, for clickAction "layout" -->
+    <entry name="layout" type="String"><default>Verse of the Day</default></entry>
     <!-- {ref} = Logos reference like BibleESV.Ro6.4 -->
     <entry name="customUrl" type="String"><default>logos4:Guide;t=Passage%20Guide;ref={ref}</default></entry>
     <!-- The art has the reference printed along the bottom; optionally crop it off -->

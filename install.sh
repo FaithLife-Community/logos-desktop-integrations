@@ -31,6 +31,7 @@ fi
 # ── Backend + config ─────────────────────────────────────────────────────────
 install -Dm755 "$here/backend/logos_plasma.py" "$data/logos-plasma/logos_plasma.py"
 install -Dm755 "$here/uninstall.sh" "$data/logos-plasma/uninstall.sh"
+install -Dm644 "$here/backend/loadlayout.vbs" "$data/logos-plasma/loadlayout.vbs"
 mkdir -p "$conf/logos-plasma"
 if [ ! -e "$conf/logos-plasma/commands.toml" ]; then
     if [ -e "$conf/logos-krunner/commands.toml" ] && grep -q '^\[settings\]' "$conf/logos-krunner/commands.toml"; then
@@ -151,6 +152,9 @@ for w in verse-of-the-day reading-plans showcase; do
     rm -rf "$tmp"
 done
 
+# Logos's COM API (used to open saved layouts) is registered per-user, where Wine doesn't
+# look; copy its registration machine-wide in the Logos prefix. Harmless if already done.
+/usr/bin/python3 "$data/logos-plasma/logos_plasma.py" --register-com || true
 /usr/bin/python3 "$data/logos-plasma/logos_plasma.py" --check
 cat <<'EOF'
 
