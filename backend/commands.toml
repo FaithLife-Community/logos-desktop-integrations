@@ -1,0 +1,80 @@
+# Logos Plasma integrations: KRunner commands and settings.
+# Changes apply on the next keystroke.
+#
+# Built in (aliases changeable below):
+#   o John 3:16      pick a Bible: your top Bibles are listed, Enter opens the first
+#   o lsb John 3:16  …or name one        oesv John 3:16   o + any owned Bible's abbreviation
+#   s grace          pick where to search (Top Bibles first)    sesv grace   one Bible
+#   stb grace        Logos's Top Bibles  sll grace        your whole library
+#   'Jesus wept      exact phrase (picker)                      .God love    any order (picker)
+#   lex ἀγάπη        your prioritized lexicons for that script  obdag ἀγάπη  o + lexicon abbreviation
+#   ol bdag          open any book in your library by title/abbreviation
+#   otc Ruth 1:1     Text Comparison of your top Bibles
+#   rp [filter]      today's readings from your reading plans
+#   logos [filter]   list commands
+
+[aliases]
+# open = "o"
+# search = "s"
+# phrase = "'"
+# words = "."
+# library = "ol"
+# compare = "otc"
+# help = "logos"
+# lexicon = "lex"
+# top = "stb"
+# everything = "sll"
+# plans = "rp"
+# Set one to "" to turn it off.
+
+[settings]
+# Bibles offered by the pickers and used by `otc`. Empty = automatic.
+# picker_bibles = ["ESV", "LSB", "NASB95", "KJV 1900", "SBLGNT", "BHW 4.18"]
+# picker_order = "usage"      # automatic order: "usage" = most opened, "priority" = Logos's Prioritize list
+# picker_size = 6
+# bible_aliases = true        # o<abbr> / s<abbr> for every Bible you own
+# covers = true               # show book covers (needs gir1.2-gdkpixbuf-2.0)
+# focus = true                # raise Logos after opening a link
+# window_classes = ["logos.exe", "verbum.exe"]
+# logos_data = ""             # …/AppData/Local/Logos if auto-detection fails
+
+# ── Your own commands ─────────────────────────────────────────────────────────
+# alias / name / url ({q} = what you type) / hint / encode (default true) / icon
+# Get URLs from Logos: panel menu → Copy location, then replace the passage/word with {q}.
+# These win over built-in and per-Bible aliases.
+
+[[command]]
+alias = "opg"
+name = "Passage Guide"
+hint = "a passage"
+url = 'logos4:Guide;t=My_Passage_Guide;ref=BibleESV.{q}'
+
+[[command]]
+alias = "oeg"
+name = "Exegetical Guide"
+hint = "a passage"
+url = 'logos4:Guide;t=My_Exegetical_Guide;ref=BibleESV.{q}'
+
+[[command]]
+alias = "obws"
+name = "Bible Word Study"
+hint = "a word or lemma"
+url = 'logos4:Guide;t=My_Bible_Word_Study;hw={q}'
+
+[[command]]
+alias = "oh"
+name = "Gospel Harmony"
+hint = "a passage"
+url = 'logosres:hrmnysyngspl;ref=Bible.{q}'
+
+[[command]]
+alias = "ltc"
+name = "Text Comparison (English set)"
+hint = "a passage"
+url = 'logos4:TextComparison;ref=BibleESV.{q};res=nasb95,lgcystndrdbblsb,esv,rsv,asv,av1873,nkjv,leb,csb,niv2011,nlt,gs-netbible'
+
+[[command]]
+alias = "ltcs"
+name = "Text Comparison (Hebrew/Greek/Latin)"
+hint = "a passage"
+url = 'logos4:TextComparison;ref=BibleBHS.{q};res=lhb,otgrkswetetxt,lelxx,lgcystndrdbblsb,nasb95,esv,rsv,asv,av1873,nkjv,leb,hcsb,csb,niv,niv2011,nlt,gs-netbible,nrsv,vulgataclem'

@@ -1,0 +1,17 @@
+[Desktop Entry]
+Name=Logos
+Comment=Open Bibles, books, lexicons, guides, searches and reading plans in Logos
+Type=Service
+Icon=logos-plasma
+X-KDE-ServiceTypes=Plasma/Runner
+X-KDE-PluginInfo-Name=logos-plasma
+X-KDE-PluginInfo-Version=1.0
+X-KDE-PluginInfo-License=GPL-3.0-or-later
+X-KDE-PluginInfo-Website=https://github.com/FaithLife-Community/logos-plasma-integrations
+X-KDE-PluginInfo-EnabledByDefault=true
+X-Plasma-API=DBus2
+X-Plasma-DBusRunner-Service=io.github.FaithlifeCommunity.LogosPlasma
+X-Plasma-DBusRunner-Path=/runner
+X-Plasma-Request-Actions-Once=true
+X-Plasma-Runner-Syntaxes=o :q:,o<bible> :q:,s :q:,':q:,lex :q:,ol :q:,otc :q:,rp,logos
+X-Plasma-Runner-Syntax-Descriptions=Open a passage in one of your top Bibles,Open a passage in a specific Bible (e.g. oesv),Search: pick Top Bibles or a Bible,Exact-phrase search,Look up a Greek/Hebrew word in your lexicons,Open a book from your library,Text Comparison,Today's reading-plan readings,List Logos commands

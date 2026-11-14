@@ -1,0 +1,15 @@
+{
+    "KPlugin": {
+        "Id": "io.github.FaithlifeCommunity.LogosVerseOfTheDay",
+        "Name": "Logos Verse of the Day",
+        "Description": "Today's Logos Verse of the Day art; click to open the verse in Logos",
+        "Icon": "logos-plasma",
+        "Category": "Miscellaneous",
+        "License": "GPL-3.0-or-later",
+        "Version": "1.0",
+        "Website": "https://github.com/FaithLife-Community/logos-plasma-integrations",
+        "Authors": [{ "Name": "FaithLife Community" }]
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
