@@ -2140,8 +2140,8 @@ if __name__ == "__main__":
                     books = lib.sermon_commentaries(sermon, n_sermon)
             except Exception as e:
                 log(f"sermon commentaries: {e!r}")
-        else:
-            books = lib.showcase(count, seed)
+        if "--sermon" not in sys.argv or "--library" in sys.argv:  # well-rated, unread books
+            books += lib.showcase(count, seed)
         print(json.dumps(books, ensure_ascii=False))
     elif "--lookup" in sys.argv:
         cli_lookup(selection="--selection" in sys.argv)

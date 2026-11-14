@@ -24,13 +24,14 @@ KCM.SimpleKCM {
             valueRole: "value"
             model: [
                 { text: i18n("Unread and well rated"), value: "library" },
-                { text: i18n("Commentaries for your sermon"), value: "sermon" }
+                { text: i18n("Commentaries for your sermon"), value: "sermon" },
+                { text: i18n("Both, half and half"), value: "both" }
             ]
             currentIndex: Math.max(0, indexOfValue(cfg_shelf))
             onActivated: cfg_shelf = currentValue
         }
         QQC2.Label {
-            visible: cfg_shelf === "sermon"
+            visible: cfg_shelf !== "library"
             Layout.maximumWidth: Kirigami.Units.gridUnit * 22
             wrapMode: Text.Wrap
             opacity: 0.7

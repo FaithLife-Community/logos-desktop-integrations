@@ -9,7 +9,8 @@ under Wine via [Ou Dedetai](https://github.com/FaithLife-Community/OuDedetai):
 * **Logos Showcase** widget: a shelf of well-rated books you own but haven't read on any
   device, one per series and author, refreshed daily. Covers lift and tilt as you hover.
   Set a Showcase to **Commentaries for your sermon** instead and it shows the commentaries
-  you've rated 4–5★ for the passage of your next sermon document, each opening at that passage.
+  you've rated 4–5★ for the passage of your next sermon document, each opening at that passage,
+  or to **Both, half and half**.
 * **Look up in Logos** (Meta+Alt+L): copy a Bible reference anywhere and open it in your
   preferred Bible. A single word opens Bible Word Study instead.
 * **Reading-plan reminders**: notifications at each plan's reminder time, with a "Read now" button.
