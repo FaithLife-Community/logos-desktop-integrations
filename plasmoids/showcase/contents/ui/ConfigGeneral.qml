@@ -18,7 +18,7 @@ KCM.SimpleKCM {
         QQC2.SpinBox {
             id: count
             Kirigami.FormData.label: i18n("Books (at most):")
-            from: 3; to: 36
+            from: 3; to: 72
         }
         QQC2.CheckBox {
             id: tilt

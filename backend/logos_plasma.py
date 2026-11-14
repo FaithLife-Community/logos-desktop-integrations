@@ -1271,6 +1271,8 @@ def main_service():
             self.token = ""
             self.focus_deadline = 0
             self.focus_script = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "logos-plasma-focus.js"
+            self.focus_done = True
+            self.focus_timers = []
             self.setup_notifications()
             self.refresh()
 
@@ -1331,7 +1333,8 @@ def main_service():
         @dbus.service.method(INTERNAL_IFACE)
         def Focus(self):
             self.focus_deadline = time.monotonic() + 5
-            GLib.idle_add(self.focus)
+            self.focus_done = False
+            self.focus_timers = [GLib.idle_add(self.focus)]
 
         @dbus.service.method(INTERNAL_IFACE)
         def FocusResult(self, found, info=""):
@@ -1645,7 +1648,8 @@ def main_service():
                            "Its title is on the clipboard: paste it into Logos's Library to download it.",
                            bus=self.bus)
                     self.focus_deadline = time.monotonic() + 5
-                    GLib.timeout_add(200, self.focus)
+                    self.focus_done = False
+                    self.focus_timers = [GLib.timeout_add(200, self.focus)]
                     return
             token, self.token = self.token, ""
             log(f"launching {url}")
@@ -1654,19 +1658,48 @@ def main_service():
                 self.focus_deadline = time.monotonic() + 90
                 # Ou Dedetai starts a second Logos process to hand the link to the running
                 # one, which can take several seconds; keep raising Logos until then.
-                for ms in s.get("focus_attempts_ms", (350, 1200, 2500, 4000, 6000, 9000)):
-                    GLib.timeout_add(int(ms), self.focus)
+                self.stop_focusing()
+                self.focus_done = False
+                self.focus_timers = [GLib.timeout_add(int(ms), self.focus)
+                                     for ms in s.get("focus_attempts_ms", (350, 1200, 2500, 4000, 6000, 9000))]
 
         def focus(self):
-            """Ask KWin to raise the topmost Logos window (async; KWin calls back FocusResult)."""
+            """One raise attempt, in a separate short-lived process (as --focus-test, which
+            works where in-service KWin calls didn't). Stops all further attempts once Logos
+            is confirmed as the active window."""
+            if self.focus_done:
+                return False
             try:
-                js = FOCUS_JS % (json.dumps([c.lower() for c in self.cfg.settings["window_classes"]]),
-                                 BUS_NAME, OBJ_PATH, INTERNAL_IFACE)
-                self.focus_script.write_text(js)
-                kwin_run_script(self.bus, self.focus_script, "logos-plasma-focus")
+                proc = Gio.Subprocess.new([sys.executable, os.path.abspath(__file__), "--raise"],
+                                          Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE)
+                proc.communicate_utf8_async(None, None, self.on_raised)
             except Exception as e:
-                log(f"focus via KWin failed: {e}")
+                log(f"focus: couldn't start raise helper: {e}")
             return False  # one-shot GLib timeout
+
+        def on_raised(self, proc, res):
+            try:
+                _, out, _ = proc.communicate_utf8_finish(res)
+                r = json.loads((out or "").strip().splitlines()[-1])
+            except Exception as e:
+                log(f"focus: raise helper failed: {e}")
+                return
+            ok = r.get("found") and r.get("chosen") and r.get("activeAfter") == r.get("chosen")
+            log(f"focus: {'Logos is in front' if ok else 'not yet'} "
+                f"(chose “{r.get('chosen')}”, active “{r.get('activeAfter')}”)")
+            if ok:
+                self.stop_focusing()
+            elif not r.get("found") and time.monotonic() < self.focus_deadline:
+                self.focus_timers.append(GLib.timeout_add(2000, self.focus))  # Logos still starting
+
+        def stop_focusing(self):
+            self.focus_done = True
+            ctx = GLib.MainContext.default()
+            for t in self.focus_timers:
+                src = ctx.find_source_by_id(t)
+                if src is not None and not src.is_destroyed():
+                    src.destroy()
+            self.focus_timers = []
 
     DBusGMainLoop(set_as_default=True)
     Runner(dbus.SessionBus())
@@ -1822,42 +1855,65 @@ def kwin_run_script(bus, path, name):
     scripting.unloadScript(name, reply_handler=load, error_handler=load)
 
 
-def focus_test():
-    """Run the focus script once and print what KWin sees. Usage: --focus-test"""
+def raise_logos(timeout_ms=4000):
+    """Ask KWin (via a one-off script) to raise the topmost real Logos window, in this
+    process. Returns a dict: found, chosen, activeAfter, windows. Runs as its own short-lived
+    process, which works reliably; the D-Bus-activated service delegates to it."""
     import dbus
     import dbus.service
     from dbus.mainloop.glib import DBusGMainLoop
     from gi.repository import GLib
     DBusGMainLoop(set_as_default=True)
     bus = dbus.SessionBus()
-    name = "io.github.FaithlifeCommunity.LogosPlasma.FocusTest"
+    tag = f"p{os.getpid()}"
+    name = f"{BUS_NAME}.Raise.{tag}"
     loop = GLib.MainLoop()
+    result = {"found": False, "chosen": "", "activeAfter": "", "windows": [], "replied": False}
 
     class Probe(dbus.service.Object):
         @dbus.service.method(INTERNAL_IFACE)
         def FocusResult(self, found, info=""):
             items = json.loads(info or "[]")
-            chosen = [w for w in items if "chosen" in w]
-            print("Logos window raised:", bool(found), f"→ “{chosen[0]['chosen']}”" if chosen else "")
-            if chosen:
-                c = chosen[0]
-                print(f"  active window after: “{c['activeAfter']}”; on current desktop: {c['onDesktop']}")
-            for w in items:
-                if "chosen" not in w and (w.get("normal") or "-v" in sys.argv):
-                    print(" ", w)
-            if not json.loads(info or "[]"):
-                print("  (no window with 'logos' or '.exe' in its class, name or title)")
+            chosen = next((w for w in items if "chosen" in w), {})
+            result.update(found=bool(found), chosen=chosen.get("chosen", ""),
+                          activeAfter=chosen.get("activeAfter", ""), replied=True,
+                          onDesktop=chosen.get("onDesktop", True),
+                          windows=[w for w in items if "chosen" not in w])
             loop.quit()
 
     Probe(dbus.service.BusName(name, bus), OBJ_PATH)
     cfg = Config()
     cfg.maybe_reload()
-    js_path = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "logos-plasma-focustest.js"
+    plugin = f"logos-plasma-raise-{tag}"
+    js_path = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / f"{plugin}.js"
     js_path.write_text(FOCUS_JS % (json.dumps([c.lower() for c in cfg.settings["window_classes"]]),
                                    name, OBJ_PATH, INTERNAL_IFACE))
-    kwin_run_script(bus, js_path, "logos-plasma-focustest")
-    GLib.timeout_add(5000, lambda: (print("No reply from KWin within 5 s."), loop.quit()))
+    kwin_run_script(bus, js_path, plugin)
+    GLib.timeout_add(timeout_ms, loop.quit)
     loop.run()
+    try:  # tidy up: unload our one-off script and its file
+        dbus.Interface(bus.get_object("org.kde.KWin", "/Scripting", introspect=False),
+                       "org.kde.kwin.Scripting").unloadScript(plugin)
+    except Exception:
+        pass
+    js_path.unlink(missing_ok=True)
+    return result
+
+
+def focus_test():
+    """Run the focus script once and print what KWin sees. Usage: --focus-test"""
+    r = raise_logos(5000)
+    if not r["replied"]:
+        print("No reply from KWin within 5 s.")
+        return
+    print("Logos window raised:", r["found"], f"→ “{r['chosen']}”" if r["chosen"] else "")
+    if r["chosen"]:
+        print(f"  active window after: “{r['activeAfter']}”; on current desktop: {r['onDesktop']}")
+    for w in r["windows"]:
+        if w.get("normal") or "-v" in sys.argv:
+            print(" ", w)
+    if not r["windows"]:
+        print("  (no window with 'logos' or '.exe' in its class, name or title)")
 
 
 def check():
@@ -1888,6 +1944,9 @@ def check():
 if __name__ == "__main__":
     if "--check" in sys.argv:
         check()
+    elif "--raise" in sys.argv:
+        r = raise_logos()
+        print(json.dumps({k: r[k] for k in ("found", "chosen", "activeAfter", "replied")}))
     elif "--focus-test" in sys.argv:
         focus_test()
     elif "--reading-plans" in sys.argv:

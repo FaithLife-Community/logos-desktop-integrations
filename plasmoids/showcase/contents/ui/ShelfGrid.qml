@@ -8,11 +8,20 @@ GridView {
     property bool fillLastPlank: true
     clip: true
     // Spread the books evenly across the width.
-    readonly property int columns: Math.max(1, Math.floor(width / (shelf.bookWidth + Kirigami.Units.gridUnit)))
+    // adaptive: scale the covers so whole rows exactly fill the available height
+    property bool adaptive: false
+    readonly property real chrome: shelf.plank + Kirigami.Units.gridUnit * 1.2
+    readonly property real baseCell: shelf.bookHeight + chrome
+    readonly property int rowsFit: Math.max(1, adaptive ? Math.round(height / baseCell) : Math.floor(height / baseCell))
+    readonly property real bookH: adaptive && height > 0
+        ? Math.max(Kirigami.Units.gridUnit * 4, Math.min(Kirigami.Units.gridUnit * 10, height / rowsFit - chrome))
+        : shelf.bookHeight
+    readonly property real bookW: bookH * 0.68
+    readonly property int columns: Math.max(1, Math.floor(width / (bookW + Kirigami.Units.gridUnit)))
     cellWidth: width / columns
-    cellHeight: shelf.bookHeight + shelf.plank + Kirigami.Units.gridUnit * 1.2
+    cellHeight: adaptive && height > 0 ? height / rowsFit : bookH + chrome
     // how many books make whole rows in the visible height
-    readonly property int fits: columns * Math.max(1, Math.floor(height / cellHeight))
+    readonly property int fits: columns * rowsFit
     interactive: contentHeight > height
 
     delegate: Item {
@@ -24,8 +33,8 @@ GridView {
         Book {
             info: parent.modelData
             tiltEnabled: shelf.widget.tilt
-            width: shelf.bookWidth
-            height: shelf.bookHeight
+            width: grid.bookW
+            height: grid.bookH
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: plank.top
             onOpen: url => shelf.widget.backend.openUrl(url)
