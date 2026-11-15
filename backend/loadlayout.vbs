@@ -74,7 +74,7 @@ Function GoToPassage(app, ref)
     If Not target Is Nothing Then
         Set req = app.CreateNavigationRequest()
         Set req.Reference = app.DataTypes.GetDataType("bible").ParseReference(ref)
-        If Err.Number = 0 Then target.Navigate req
+        If Err.Number = 0 Then target.Navigate (req)  ' ByVal: Wine can't pass an object ByRef across processes
         If Err.Number = 0 Then
             GoToPassage = "navigated " & target.Title & " (" & target.LinkSet & ")"
             Exit Function

@@ -30,7 +30,9 @@ If Err.Number <> 0 Or req.Reference Is Nothing Then
     WScript.Echo "error: Logos didn't recognise the reference """ & ref & """"
     WScript.Quit 1
 End If
-text = app.CopyBibleVerses.GetText(req)
+' Pass the request ByVal (extra parentheses): under Wine, passing an object ByRef across
+' processes fails with error 5 "Invalid procedure call or argument".
+text = app.CopyBibleVerses.GetText((req))
 If Err.Number <> 0 Then
     WScript.Echo "error: " & Hex(Err.Number) & " " & Err.Description
     WScript.Quit 1
