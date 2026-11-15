@@ -67,7 +67,7 @@ settings in `~/.config/logos-plasma`). The installer doesn't restart KRunner or 
 
 Aliases, picker Bibles and your own URL commands live in `~/.config/logos-plasma/commands.toml`.
 To add a command, use **Copy location** on a Logos panel and replace the passage or word with `{q}`.
-The [KRunner guide](docs/krunner.md) covers every command in more detail.
+The [KRunner guide](docs/krunner.md) covers every command in more detail, and [docs/testing.md](docs/testing.md) is the full test checklist.
 
 ## How it works
 
