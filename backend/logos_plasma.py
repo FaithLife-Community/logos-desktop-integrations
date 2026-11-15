@@ -307,7 +307,13 @@ def split_reference(text):
 def find_references(text, loose=False):
     """Bible references in free text → ['John 3:16', '1 Corinthians 13:4-7', …] (in order)."""
     out = []
-    for m in _REF_RE.finditer(text or ""):
+    text = text or ""
+    pos = 0
+    while True:
+        m = _REF_RE.search(text, pos)
+        if not m:
+            break
+        pos = m.end()
         raw, ch, v1, v2, v3, ch2 = m.groups()
         words = raw.split()
         # try the longest tail of the matched words that names a book ("for God so loved…
@@ -327,7 +333,15 @@ def find_references(text, loose=False):
                 num = BOOK_LOOKUP[key]
                 break
         if num is None:
+            # not a book: the number may start the next reference ("cf. 1 Pet 2:24")
+            pos = m.start(2)
             continue
+        if loose and not v1 and not ch2:
+            # a typed or selected reference can separate chapter and verse with a space ("John 1 10")
+            sp = re.match(r"\s+(\d{1,3})(?![\w:])", text[m.end():])
+            if sp:
+                v1 = sp.group(1)
+                pos = m.end() + sp.end()
         ref = f"{BOOKS[num]} {ch}"
         if v1:
             ref += f":{v1}"
@@ -1848,25 +1862,73 @@ def read_clipboard(selection=False):
     return ""
 
 
+def logos_scan(text):
+    """Bible references in text, found by Logos's own parser (it reads "jn 1v10", "John 1 10",
+    ranges, lists…). Only while Logos is running, as it would otherwise have to start Logos
+    just to parse. Returns [(query, display)] with query ready for reference_url's {q}
+    ("Jn1.10"), or None when Logos isn't running or can't be asked."""
+    if not find_oudedetai():
+        return None
+    try:
+        SCAN_IN.parent.mkdir(parents=True, exist_ok=True)
+        SCAN_IN.write_text(text, encoding="utf-16")
+        SCAN_OUT.unlink(missing_ok=True)
+    except OSError as e:
+        log(f"scan: {e}")
+        return None
+    out = run_logos_script(SCAN_VBS, [], timeout=30)
+    if not any(line.strip().startswith("found ") for line in out.splitlines()):
+        log(f"scan: {script_result(out, ('notrunning',))}")  # not running, or Logos couldn't be asked
+        return None
+    try:
+        out = SCAN_OUT.read_text(encoding="utf-16")
+    except OSError:
+        return None
+    refs = []
+    for line in out.splitlines():
+        saved, _, display = line.strip().partition("\t")
+        if saved:
+            q = saved.split(".", 1)[1] if "." in saved else saved  # "Bible.Jn1.10" → "Jn1.10"
+            refs.append((q, display or saved))
+    return refs
+
+
+def lookup_references(text):
+    """[(query, display)]: ours first (instant), then Logos's parser for anything ours
+    doesn't understand, if Logos is running (it costs a few seconds through Wine)."""
+    if not text.strip():
+        return []
+    ours = find_references(text, loose=len(text.strip()) <= 40)
+    if ours:
+        return [(encode(r, ":,."), r) for r in ours]
+    return logos_scan(text) or []
+
+
 def cli_lookup(selection=False):
-    """Global-shortcut action: open the Bible reference in the clipboard (or selection) in
-    Logos; a single word goes to Bible Word Study instead."""
+    """Global-shortcut action: open the Bible reference you've selected or copied in Logos
+    (the selection first, then the clipboard); a single word goes to Bible Word Study."""
     cfg = Config()
     cfg.maybe_reload()
     s = cfg.settings
-    text = read_clipboard(selection).strip()
-    refs = find_references(text)
-    if refs:
-        cli_open(s["reference_url"].replace("{q}", encode(refs[0], ":,.")))
-        if len(refs) > 1:
-            notify(f"Opened {refs[0]}", "Also in the clipboard: " + ", ".join(refs[1:6]))
-        return
+    sources = [read_clipboard(True).strip()]
+    if not selection:
+        clip = read_clipboard(False).strip()
+        if clip and clip != sources[0]:
+            sources.append(clip)
+    for text in sources:
+        refs = lookup_references(text)
+        if refs:
+            cli_open(s["reference_url"].replace("{q}", refs[0][0]))
+            if len(refs) > 1:
+                notify(f"Opened {refs[0][1]}", "Also there: " + ", ".join(d for _, d in refs[1:6]))
+            return
+    text = next((t for t in sources if t), "")
     words = text.split()
     if 0 < len(words) <= 2 and len(text) <= 40:
         cli_open(s["wordstudy_url"].replace("{q}", encode(text, "")))
         return
     notify("No Bible reference found",
-           ("In: “" + text[:80] + ("…”" if len(text) > 80 else "”")) if text else "The clipboard is empty.")
+           ("In: “" + text[:80] + ("…”" if len(text) > 80 else "”")) if text else "Nothing is selected or copied.")
 
 
 def plan_status(plan):
@@ -1933,6 +1995,9 @@ def windows_path(path):
 LAYOUT_VBS = XDG_DATA / "logos-plasma" / "loadlayout.vbs"
 COPY_VBS = XDG_DATA / "logos-plasma" / "copyverses.vbs"
 COPY_OUT = XDG_DATA / "logos-plasma" / "copyverses.txt"
+SCAN_VBS = XDG_DATA / "logos-plasma" / "scanrefs.vbs"
+SCAN_IN = XDG_DATA / "logos-plasma" / "scanrefs-in.txt"
+SCAN_OUT = XDG_DATA / "logos-plasma" / "scanrefs-out.txt"
 COPY_PREFIX = "copytext:"  # our own scheme: copytext:<reference> copies the passage as text
 
 
@@ -1944,12 +2009,16 @@ def run_logos_script(script, words, done=None, timeout=180):
     if not o:
         out = "error: Ou Dedetai not found"
         return done(out) if done else out
-    argv = [o, "--wine", "cscript", "//nologo", windows_path(script)] + list(words)
+    argv, env = logos_wine_command(o)
+    argv += ["cscript", "//nologo", windows_path(script)] + list(words)
     if done is None:
-        return subprocess_run(argv, timeout=timeout)
+        return subprocess_run(argv, timeout=timeout, env=env)
     gi.require_version("Gio", "2.0")
     from gi.repository import Gio
-    proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
+    launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
+    for k, v in (env or {}).items():
+        launcher.setenv(k, v, True)
+    proc = launcher.spawnv(argv)
 
     def finished(p, res):
         try:
@@ -2006,10 +2075,23 @@ def load_layout(name, done=None, ref=""):
     run_logos_script(LAYOUT_VBS, words, lambda out: done(result(out)))
 
 
-def subprocess_run(argv, timeout=60):
+def logos_wine_command(oudedetai):
+    """How to run a Windows program in the Logos prefix: Ou Dedetai's own Wine, called
+    directly (seconds faster than `oudedetai --wine`), else through Ou Dedetai.
+    Returns (argv prefix, extra environment or None)."""
+    wine = Path(oudedetai).parent / "data" / "bin" / "wine64"
+    data, _ = find_logos_dirs()
+    prefix = wine_prefix(data) if data else None
+    if wine.exists() and prefix:
+        return [str(wine)], {"WINEPREFIX": str(prefix), "WINEDEBUG": "-all"}
+    return [oudedetai, "--wine"], None
+
+
+def subprocess_run(argv, timeout=60, env=None):
     import subprocess
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
+                           env={**os.environ, **env} if env else None)
         return r.stdout + r.stderr
     except Exception as e:
         return f"error: {e}"
