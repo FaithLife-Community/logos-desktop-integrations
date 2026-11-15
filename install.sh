@@ -97,7 +97,7 @@ NoDisplay=true
 X-GNOME-UsesNotifications=true
 EOF
 
-# ── "Look up in Logos" global shortcut (Meta+Alt+L) ─────────────────────────
+# ── "Look up in Logos" global shortcut (Alt+Shift+L) ─────────────────────────
 # Opens the Bible reference in the clipboard in your preferred Bible (a single word goes to
 # Bible Word Study). Change the key in System Settings → Shortcuts → "Look up in Logos".
 install -Dm644 /dev/stdin "$data/applications/logos-plasma-lookup.desktop" <<EOF
@@ -109,15 +109,25 @@ Icon=logos-plasma
 Exec=/usr/bin/python3 $data/logos-plasma/logos_plasma.py --lookup
 NoDisplay=false
 Categories=Education;
-X-KDE-Shortcuts=Meta+Alt+L
+X-KDE-Shortcuts=Alt+Shift+L
 Actions=selection;
 [Desktop Action selection]
 Name=Look up selected text in Logos
 Exec=/usr/bin/python3 $data/logos-plasma/logos_plasma.py --lookup --selection
 EOF
-if ! grep -q 'logos-plasma-lookup.desktop' "$conf/kglobalshortcutsrc" 2>/dev/null; then
+# Set the key unless you've chosen one yourself. Plasma clears a key that's already taken
+# (Meta+Alt+L was, on some systems), leaving "_launch=" empty: that counts as unset.
+current=$(kreadconfig6 --file kglobalshortcutsrc --group services --group logos-plasma-lookup.desktop \
+    --key _launch 2>/dev/null || true)
+if [ -z "$current" ]; then
     kwriteconfig6 --file kglobalshortcutsrc --group services --group logos-plasma-lookup.desktop \
-        --key _launch "Meta+Alt+L" || true
+        --key _launch "Alt+Shift+L" || true
+fi
+
+# Reading what you've highlighted (not just copied) needs wl-paste (Wayland) or xclip (X11)
+if ! command -v wl-paste >/dev/null 2>&1 && ! command -v xclip >/dev/null 2>&1; then
+    echo "Note: install wl-clipboard (e.g. sudo apt install wl-clipboard) so Alt+Shift+L can look up"
+    echo "      highlighted text; without it, it only looks up what you've copied."
 fi
 kbuildsycoca6 >/dev/null 2>&1 || true
 
@@ -162,7 +172,7 @@ cat <<'EOF'
 
 Done.
   KRunner (Alt+Space):  John 3:16 · o John 3:16 · s grace · fb moses · today · rp · logos
-  Select or copy a reference anywhere, then Meta+Alt+L to open it in Logos (may need a re-login the first time).
+  Select or copy a reference anywhere, then Alt+Shift+L to open it in Logos (may need a re-login the first time).
   Widgets: right-click the desktop or panel → Add Widgets → search "Logos".
   If an updated widget still looks old: systemctl --user restart plasma-plasmashell
   Check everything:  python3 ~/.local/share/logos-plasma/logos_plasma.py --selftest

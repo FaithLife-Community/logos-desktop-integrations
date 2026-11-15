@@ -60,7 +60,7 @@ Your top Bibles are the ones you open most, or follow Logos's **Prioritize** lis
 |---|---|
 | `rp` | Today's readings from your reading plans. |
 | `today` | Today's entry in your devotionals (your prioritized ones first). |
-| **Meta+Alt+L** (anywhere) | Opens the Bible reference you've selected (or copied) in any app. "jn 1v10", "John 1 10", ranges and lists all work; anything our parser doesn't recognise is passed to Logos's own parser if Logos is running. A single word opens Bible Word Study. Change the key in System Settings → Shortcuts → "Look up in Logos". |
+| **Alt+Shift+L** (anywhere) | Opens the Bible reference you've selected (or copied) in any app. "jn 1v10", "John 1 10", ranges and lists all work; anything our parser doesn't recognise is passed to Logos's own parser if Logos is running. A single word opens Bible Word Study. Change the key in System Settings → Shortcuts → "Look up in Logos". |
 
 ## Copying verses
 

@@ -57,13 +57,13 @@ the right thing opens in Logos, and how things look.
 - [ ] Nothing opens a terminal window (KRunner, widgets, shortcut, reminders)
 
 ## Bringing Logos forward
-- [ ] From KRunner, a widget and Meta+Alt+L, when Logos is already running
+- [ ] From KRunner, a widget and Alt+Shift+L, when Logos is already running
 - [ ] When the link starts Logos
 - [ ] It stops trying once Logos is in front (no focus-stealing later)
 
-## Look up in Logos (Meta+Alt+L)
-- [ ] Copy "…(John 3:16, ESV)" anywhere and press Meta+Alt+L: opens John 3:16
-- [ ] With Logos running, select (just highlight) "jn 1v10", "John 1 10" or "Rom 8.28-30" and press Meta+Alt+L: opens it
+## Look up in Logos (Alt+Shift+L)
+- [ ] Copy "…(John 3:16, ESV)" anywhere and press Alt+Shift+L: opens John 3:16
+- [ ] With Logos running, select (just highlight) "jn 1v10", "John 1 10" or "Rom 8.28-30" and press Alt+Shift+L: opens it
 - [ ] With Logos closed, a plainly written reference (John 1:10) still opens, starting Logos
 - [ ] A single copied word opens Bible Word Study
 - [ ] Text with no reference shows "No Bible reference found"
