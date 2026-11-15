@@ -63,6 +63,8 @@ the right thing opens in Logos, and how things look.
 
 ## Look up in Logos (Meta+Alt+L)
 - [ ] Copy "…(John 3:16, ESV)" anywhere and press Meta+Alt+L: opens John 3:16
+- [ ] With Logos running, select (just highlight) "jn 1v10", "John 1 10" or "Rom 8.28-30" and press Meta+Alt+L: opens it
+- [ ] With Logos closed, a plainly written reference (John 1:10) still opens, starting Logos
 - [ ] A single copied word opens Bible Word Study
 - [ ] Text with no reference shows "No Bible reference found"
 - [ ] Listed and changeable in System Settings → Shortcuts → "Look up in Logos"
