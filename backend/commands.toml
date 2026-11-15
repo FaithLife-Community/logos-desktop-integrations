@@ -17,7 +17,7 @@
 #   John 3:16        a bare reference opens in your preferred Bible (set in Logos)
 #   logos [filter]   list commands
 #
-# Meta+Alt+L anywhere: open the Bible reference in the clipboard (a single word goes to
+# Alt+Shift+L anywhere: open the Bible reference in the clipboard (a single word goes to
 # Bible Word Study). Change the key in System Settings → Shortcuts → "Look up in Logos".
 
 [aliases]
@@ -48,7 +48,7 @@
 # focus = true                # raise Logos after opening a link
 # window_classes = ["logos.exe", "verbum.exe"]
 # logos_data = ""             # …/AppData/Local/Logos if auto-detection fails
-# reference_url = "logosref:Bible.{q}"   # bare references & Meta+Alt+L; logosref = Logos's preferred Bible
+# reference_url = "logosref:Bible.{q}"   # bare references & Alt+Shift+L; logosref = Logos's preferred Bible
 # bare_references = true
 # devotionals = []            # e.g. ["My Utmost for His Highest"]; empty = your prioritized ones
 # devotional_url = "logosres:{logosres}"   # Logos opens calendar devotionals at today

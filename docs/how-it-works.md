@@ -111,7 +111,7 @@ reference (VBScript's default). Passing it by value, in extra parentheses such a
 
 ## Looking up references
 
-Meta+Alt+L reads the primary selection (what you've highlighted), then the clipboard. The
+Alt+Shift+L reads the primary selection (what you've highlighted), then the clipboard. The
 backend's own parser goes first: it's instant, and reads forms like "jn 1v10", "John 1 10" and
 "Rom 8.28-30". Only if it finds nothing, and Logos is running, does `scanrefs.vbs` ask Logos's
 own parser (`ParseReference`, then `ScanForReferences`); that round trip through Wine takes a
