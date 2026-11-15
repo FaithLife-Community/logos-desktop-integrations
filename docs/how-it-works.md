@@ -100,3 +100,11 @@ imports is kept as `~/.local/share/logos-plasma/logos-com-hklm.reg`).
 Bible, formatted the way you last set up Logos's Copy Bible Verses tool. `copyverses.vbs` writes it
 to `copyverses.txt` as UTF-16 (Wine's console output would mangle Greek, Hebrew and curly quotes),
 and the backend puts it on the clipboard.
+
+### Passing objects to Logos under Wine
+
+Calls that take a request object (`CopyBibleVerses.GetText`, `Panel.Navigate`) fail under Wine
+with VBScript error 5, "Invalid procedure call or argument", when the object is passed by
+reference (VBScript's default). Passing it by value, in extra parentheses such as
+`GetText((req))`, works. This looks like a Wine marshalling bug with by-reference
+`VT_DISPATCH` arguments across processes.
