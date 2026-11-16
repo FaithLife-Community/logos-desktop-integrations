@@ -46,7 +46,8 @@
 # picker_bibles = ["ESV", "LSB", "NASB95", "KJV 1900", "SBLGNT", "BHW 4.18"]
 # picker_order = "usage"      # automatic order: "usage" = most opened, "priority" = Logos's Prioritize list
 # picker_size = 6
-# bible_aliases = true        # o<abbr> / s<abbr> for every Bible you own
+# bible_aliases = 15          # o<abbr> / s<abbr> for your top 15 Bibles (Prioritize list, then
+#                             # most used) plus picker_bibles; true = every Bible, false = none
 # covers = true               # show book covers (needs gir1.2-gdkpixbuf-2.0)
 # focus = true                # raise Logos after opening a link
 # window_classes = ["logos.exe", "verbum.exe"]

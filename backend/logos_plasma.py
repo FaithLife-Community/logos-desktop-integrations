@@ -69,7 +69,9 @@ DEFAULTS = {
     "settings": {
         "logos_data": "",            # path to .../AppData/Local/Logos; empty = find Ou Dedetai's
         "logos_databases": True,     # read Logos's local databases (catalog, plans, layouts…); false = links/COM only
-        "bible_aliases": True,       # generate o<abbr> / s<abbr> for every owned Bible
+        "bible_aliases": 15,         # o<abbr> / s<abbr> for your top N Bibles (Prioritize list,
+                                     # then most used) plus picker_bibles; true = every Bible
+                                     # (Logos counts manuscripts as Bibles), false = none
         "picker_bibles": [],         # e.g. ["ESV", "LSB", "NASB95"]; empty = automatic
         "picker_order": "usage",     # "usage" = most opened first, "priority" = Logos's Prioritize list
         "picker_size": 6,
@@ -564,9 +566,9 @@ class Library:
                 continue
             bibles.append(Resource(rec, rid, logosres_id(rid, alts), abbr, title,
                                    use or 0, ranks.get(rid, 0)))
-        # When two Bibles share an alias key ("NASB95" vs "NASB 95" para edition), prefer an
-        # exact abbreviation, then the prioritized / most used one.
-        bibles.sort(key=lambda b: (b.abbr.lower() != b.key, priority_key(b), len(b.title)))
+        # When two Bibles share an alias key (the ESV and an ESV fragment or edition), prefer the
+        # prioritized / most used one, then an exact abbreviation.
+        bibles.sort(key=lambda b: (priority_key(b), b.abbr.lower() != b.key, len(b.title)))
         self.bibles = bibles
         self.by_key = {}
         for b in bibles:
@@ -649,6 +651,15 @@ class Library:
         pool = [l for l in self.lexicons if l.rank or l.use]
         pool = [l for l in pool if not want or want in l.langs or not l.langs]
         return pool[:size]
+
+    def top_bibles(self, count, names=()):
+        """Your top `count` Bibles (Prioritize list, then most used) plus any named ones."""
+        named = [self.by_key[norm(n)] for n in names if norm(n) in self.by_key]
+        # Already in priority order. Bibles you've never prioritized or opened only count when
+        # there are none of those yet (a new install), so manuscripts don't take short names.
+        known = [b for b in self.bibles if b.rank or b.use]
+        top = (known or self.bibles)[:count]
+        return top + [b for b in named if b not in top]
 
     def picker(self, names, order, size):
         if names:
@@ -1286,18 +1297,20 @@ def build_commands(cfg, lib):
     ]
     for kind, name, hint in builtin:
         add(Cmd(a.get(kind, ""), kind, name, hint))
-    if s["bible_aliases"]:
-        for b in lib.bibles:
+    n = s["bible_aliases"]
+    if n:
+        aliased = lib.bibles if n is True else lib.top_bibles(int(n), s["picker_bibles"])
+        for b in aliased:
             if a.get("open"):
                 add(Cmd(a["open"] + b.key, "open", b.abbr, "a passage", bible=b))
             if a.get("search"):
                 add(Cmd(a["search"] + b.key, "search", f"Search {b.abbr}", "words", bible=b))
         # Short forms without the edition, as people type them: okjv → KJV 1900, onasb → NASB95.
         # Only when nothing else claims the short form (a Bible called just "KJV" keeps it).
-        short = {}
-        for b in lib.bibles:
+        short, keys = {}, {b.key for b in aliased}
+        for b in aliased:
             k = re.sub(r"(?<=[a-z])\d+$", "", b.key)
-            if k != b.key and k not in lib.by_key:
+            if k != b.key and k not in keys:
                 short.setdefault(k, b)
         for k, b in short.items():
             if a.get("open"):

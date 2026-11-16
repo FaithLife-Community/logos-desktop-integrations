@@ -16,7 +16,7 @@ All the short names (aliases) can be changed or switched off in
 | `John 3:16` | Any Bible reference on its own opens in **your preferred Bible** (the one set in Logos). Several references (`Gen 1:1; John 1:1`) give one row each. |
 | `o John 3:16` | Lists your top Bibles, with covers. Enter opens the first; pick another with the arrow keys. |
 | `o lsb John 3:16` | Names the Bible after `o`. |
-| `oesv John 3:16` | `o` + the abbreviation of **any Bible you own** (`othgnt`, `onkjv`, `onivuk`, `obsb`…), as Logos abbreviates it. Editions can be left off when nothing else uses the short form: `okjv` for KJV 1900, `onasb` for NASB95. |
+| `oesv John 3:16` | `o` + the abbreviation of one of **your top 15 Bibles** (`othgnt`, `onkjv`, `onivuk`, `obsb`…), as Logos abbreviates it. Editions can be left off when no other top Bible uses the short form: `okjv` for KJV 1900, `onasb` for NASB95. |
 | `oesv` | The Bible on its own: opens the ESV where you left it. |
 | `otc Ruth 1:1` | Text Comparison of your top Bibles. |
 | `opg John 1` · `oeg John 1` | Passage Guide · Exegetical Guide. |
@@ -26,6 +26,12 @@ All the short names (aliases) can be changed or switched off in
 
 Your top Bibles are the ones you open most, or follow Logos's **Prioritize** list if you set
 `picker_order = "priority"`; you can also list them yourself with `picker_bibles`.
+
+The `o<abbr>` and `s<abbr>` shortcuts are made for your top 15 Bibles: those on Logos's
+**Prioritize** list, then the ones you open most, plus any in `picker_bibles`. Logos counts
+manuscripts and fragments as Bibles too (a large library can have hundreds), so they don't all
+get one. Change the number with `bible_aliases = 25` in `[settings]`, or `true` for every Bible.
+`o esv John 3:16` works for any Bible; where two share an abbreviation, the one you use wins.
 
 ## Searching
 
