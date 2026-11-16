@@ -1305,18 +1305,6 @@ def build_commands(cfg, lib):
                 add(Cmd(a["open"] + b.key, "open", b.abbr, "a passage", bible=b))
             if a.get("search"):
                 add(Cmd(a["search"] + b.key, "search", f"Search {b.abbr}", "words", bible=b))
-        # Short forms without the edition, as people type them: okjv → KJV 1900, onasb → NASB95.
-        # Only when nothing else claims the short form (a Bible called just "KJV" keeps it).
-        short, keys = {}, {b.key for b in aliased}
-        for b in aliased:
-            k = re.sub(r"(?<=[a-z])\d+$", "", b.key)
-            if k != b.key and k not in keys:
-                short.setdefault(k, b)
-        for k, b in short.items():
-            if a.get("open"):
-                add(Cmd(a["open"] + k, "open", b.abbr, "a passage", bible=b))
-            if a.get("search"):
-                add(Cmd(a["search"] + k, "search", f"Search {b.abbr}", "words", bible=b))
         if a.get("open"):
             for l in lib.lexicons:
                 if l.abbr:

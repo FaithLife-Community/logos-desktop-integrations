@@ -16,7 +16,7 @@ All the short names (aliases) can be changed or switched off in
 | `John 3:16` | Any Bible reference on its own opens in **your preferred Bible** (the one set in Logos). Several references (`Gen 1:1; John 1:1`) give one row each. |
 | `o John 3:16` | Lists your top Bibles, with covers. Enter opens the first; pick another with the arrow keys. |
 | `o lsb John 3:16` | Names the Bible after `o`. |
-| `oesv John 3:16` | `o` + the abbreviation of one of **your top 15 Bibles** (`othgnt`, `onkjv`, `onivuk`, `obsb`…), as Logos abbreviates it. Editions can be left off when no other top Bible uses the short form: `okjv` for KJV 1900, `onasb` for NASB95. |
+| `oesv John 3:16` | `o` + the abbreviation of one of **your top 15 Bibles** (`othgnt`, `onkjv`, `onivuk`, `obsb`…), as Logos abbreviates it. The name always matches Logos's abbreviation: KJV 1900 is `okjv1900`, NASB95 is `onasb95`. |
 | `oesv` | The Bible on its own: opens the ESV where you left it. |
 | `otc Ruth 1:1` | Text Comparison of your top Bibles. |
 | `opg John 1` · `oeg John 1` | Passage Guide · Exegetical Guide. |
