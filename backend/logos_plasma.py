@@ -1990,6 +1990,24 @@ def set_clipboard(text, bus=None):
     return False
 
 
+# Akousousin bundles wl-paste and xclip (with their libraries) in its tar install; use
+# them when the system has none, so highlighted text works without installing anything.
+AKOUSOUSIN_HELPERS = HOME / ".local/lib/akousousin/resources/helpers"
+
+
+def clipboard_tool(name):
+    """(path, env) for a clipboard reader (wl-paste, xclip): the system's, else Akousousin's
+    bundled copy. (None, None) when there's neither."""
+    path = shutil.which(name)
+    if path:
+        return path, None
+    helper = AKOUSOUSIN_HELPERS / name
+    exe = helper / "bin" / name
+    if exe.is_file() and os.access(exe, os.X_OK):
+        return str(exe), dict(os.environ, LD_LIBRARY_PATH=str(helper / "lib"))
+    return None, None
+
+
 def read_clipboard(selection=False):
     """Clipboard (or primary selection) text, via Klipper or wl-paste/xclip."""
     import subprocess
@@ -2005,8 +2023,11 @@ def read_clipboard(selection=False):
         except Exception:
             pass
     for cmd in cmds:
+        tool, env = clipboard_tool(cmd[0])
+        if not tool:
+            continue
         try:
-            return subprocess.run(cmd, capture_output=True, text=True, timeout=3).stdout
+            return subprocess.run([tool, *cmd[1:]], capture_output=True, text=True, timeout=3, env=env).stdout
         except (OSError, subprocess.SubprocessError):
             continue
     return ""
@@ -2649,9 +2670,9 @@ def selftest():
         key or ("no key: it may clash with another shortcut; set one in "
                 + ("System Settings → Shortcuts" if desk == "kde" else "Settings → Keyboard → Custom Shortcuts")
                 if key == "" else "not registered"))
-    clip = shutil.which("wl-paste") or shutil.which("xclip")
-    out(bool(clip), "reading highlighted text (wl-paste or xclip)",
-        clip or "install wl-clipboard to look up highlighted text, not only copied text")
+    clip = clipboard_tool("wl-paste")[0] or clipboard_tool("xclip")[0]
+    out(bool(clip), "reading highlighted text (wl-paste or xclip, the system's or Akousousin's)",
+        clip or "install wl-clipboard (or Akousousin) to look up highlighted text, not only copied text")
 
     lines.append("")
     try:
