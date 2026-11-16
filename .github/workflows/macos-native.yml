@@ -1,0 +1,90 @@
+name: macOS native integrations
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'codex/macos-native-*']
+    paths: ['macos/**', '.github/workflows/macos-native.yml']
+  pull_request:
+    paths: ['macos/**', '.github/workflows/macos-native.yml']
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [local-data, commands-only]
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: Build app and widget extension
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          args=()
+          if [ "$VARIANT" = commands-only ]; then args+=(--without-local-data); fi
+          ./macos/build.sh "${args[@]}" CODE_SIGNING_ALLOWED=NO ARCHS='arm64 x86_64'
+      - name: Verify local-data compilation boundary
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          app="macos/build/$VARIANT/Build/Products/Release/LogosDesktopIntegrations.app"
+          binary="$app/Contents/MacOS/LogosDesktopIntegrations"
+          if [ "$VARIANT" = commands-only ]; then
+            if strings "$binary" | grep -E 'LibraryCatalog/catalog.db|ReadingPlanDocuments|SELECT ResourceId FROM ResourceReadingProgress'; then
+              echo 'Local Logos database code found in commands-only binary' >&2
+              exit 1
+            fi
+            widget="$app/Contents/PlugIns/LogosWidgets.appex/Contents/MacOS/LogosWidgets"
+            if strings "$widget" | grep -E 'LogosReadingPlans|LogosShowcase|LogosSermonCommentaries'; then
+              echo 'Local-data widgets found in commands-only extension' >&2
+              exit 1
+            fi
+          else
+            strings "$binary" | grep 'ReadingPlanDocuments' > /dev/null
+          fi
+      - name: Ad hoc sign preview for local testing
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          app="macos/build/$VARIANT/Build/Products/Release/LogosDesktopIntegrations.app"
+          # App Groups require a developer's own provisioning. This preview omits
+          # those entitlements; production/development signing uses project.yml.
+          entitlements="$RUNNER_TEMP/preview-widget.plist"
+          /usr/libexec/PlistBuddy -c 'Add :com.apple.security.app-sandbox bool true' "$entitlements"
+          /usr/libexec/PlistBuddy -c 'Add :com.apple.security.network.client bool true' "$entitlements"
+          codesign --force --sign - --entitlements "$entitlements" "$app/Contents/PlugIns/LogosWidgets.appex"
+          codesign --force --sign - "$app"
+          codesign --verify --deep --strict "$app"
+      - name: Verify background-only packaging and native actions
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          app="macos/build/$VARIANT/Build/Products/Release/LogosDesktopIntegrations.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$app/Contents/Info.plist")" = true
+          test -d "$app/Contents/PlugIns/LogosWidgets.appex"
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/LogosDesktopIntegrations"
+          "$app/Contents/MacOS/LogosDesktopIntegrations" --query-json 'lay passage study' > "$RUNNER_TEMP/query.json"
+          python3 -c 'import json,os; r=json.load(open(os.environ["RUNNER_TEMP"]+"/query.json")); assert r and "logos-integrations://command" in r[0]["url"]'
+      - name: Package preview
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: ditto -c -k --keepParent "macos/build/$VARIANT/Build/Products/Release/LogosDesktopIntegrations.app" "LogosDesktopIntegrations-$VARIANT.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LogosDesktopIntegrations-${{ matrix.variant }}
+          path: LogosDesktopIntegrations-${{ matrix.variant }}.zip
+
+  raycast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci && npm run typecheck && npm run build
+        working-directory: macos/raycast

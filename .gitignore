@@ -1,2 +1,10 @@
 __pycache__/
 *.pyc
+
+macos/build/
+macos/*.xcodeproj/
+macos/Resources/*-Info.plist
+macos/Resources/*.entitlements
+macos/raycast/node_modules/
+macos/raycast/dist/
+macos/raycast/raycast-env.d.ts

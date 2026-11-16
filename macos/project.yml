@@ -1,0 +1,78 @@
+name: LogosDesktopIntegrations
+options:
+  deploymentTarget:
+    macOS: '14.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MACOSX_DEPLOYMENT_TARGET: '14.0'
+    DEVELOPMENT_TEAM: ''
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LOGOS_LOCAL_DATA'
+    SHARED_GROUP_IDENTIFIER: group.io.github.FaithLifeCommunity.LogosDesktopIntegrations
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '1'
+targets:
+  LogosDesktopIntegrations:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    dependencies:
+      - target: LogosWidgets
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.FaithLifeCommunity.LogosDesktopIntegrations
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.reference
+        ENABLE_APP_SANDBOX: NO
+    info:
+      path: Resources/App-Info.plist
+      properties:
+        CFBundleDisplayName: Logos Desktop Integrations
+        LSUIElement: true
+        NSAppleEventsUsageDescription: Open Logos commands and copy Bible verses at your request.
+        SharedGroupIdentifier: $(SHARED_GROUP_IDENTIFIER)
+        NSServices:
+          - NSMessage: lookupSelection
+            NSPortName: LogosDesktopIntegrations
+            NSMenuItem:
+              default: Look up in Logos
+            NSSendTypes: [public.utf8-plain-text, NSStringPboardType]
+        CFBundleURLTypes:
+          - CFBundleURLName: Logos Desktop Integrations
+            CFBundleURLSchemes: [logos-integrations]
+    entitlements:
+      path: Resources/App.entitlements
+      properties:
+        com.apple.security.application-groups: [$(SHARED_GROUP_IDENTIFIER)]
+        com.apple.security.automation.apple-events: true
+  LogosWidgets:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Widgets
+      - path: Sources/Models.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.FaithLifeCommunity.LogosDesktopIntegrations.widgets
+        SKIP_INSTALL: YES
+        ENABLE_APP_SANDBOX: YES
+    info:
+      path: Resources/Widgets-Info.plist
+      properties:
+        CFBundleDisplayName: Logos Desktop Integrations Widgets
+        SharedGroupIdentifier: $(SHARED_GROUP_IDENTIFIER)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Resources/Widgets.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.application-groups: [$(SHARED_GROUP_IDENTIFIER)]
+schemes:
+  LogosDesktopIntegrations:
+    build:
+      targets:
+        LogosDesktopIntegrations: all

@@ -7,6 +7,8 @@ Wine via [Ou Dedetai](https://github.com/FaithLife-Community/OuDedetai), for **K
 **On GNOME** you get the same commands in the Activities overview search, the Alt+Shift+L
 look-up shortcut, and reading-plan reminders; there are no widgets. See [GNOME](docs/gnome.md).
 
+**On macOS:** native widgets, Spotlight, Siri/Shortcuts and Services are under development on a separate branch. See [macOS](macos/README.md) for building and signing, including the option to compile out Logos-folder access.
+
 **On KDE Plasma:**
 
 * **KRunner commands**: a Raycast/BibleWorks-style command line for Logos, available in

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "logos-desktop-integrations",
+  "title": "Logos",
+  "description": "Search your Logos library, plans and layouts, or run Logos commands.",
+  "icon": "icon.png",
+  "author": "faithlife-community",
+  "license": "GPL-3.0-or-later",
+  "commands": [{"name":"logos","title":"Search Logos","description":"Passages, books, Factbook, layouts and reading plans","mode":"view"}],
+  "preferences": [{"name":"hostPath","title":"Integration host","type":"textfield","required":false,"default":"/Applications/LogosDesktopIntegrations.app","description":"Path to the installed background integration bundle"}],
+  "dependencies": {"@raycast/api":"^1.90.0"},
+  "devDependencies": {"@types/node":"^22.0.0","@types/react":"^19.0.0","typescript":"^5.7.0"},
+  "scripts":{"build":"ray build","dev":"ray develop","typecheck":"tsc --noEmit"}
+}
