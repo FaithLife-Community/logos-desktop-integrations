@@ -64,7 +64,7 @@ DEFAULTS = {
         "library": "ol", "compare": "otc", "help": "logos",
         "lexicon": "lex", "top": "stb", "everything": "sll", "plans": "rp",
         "wordstudy": "ws", "factbook": "fb", "recent": "or", "devotional": "today",
-        "layout": "lay", "copy": "cv",
+        "layout": "lay", "copy": "cv", "sermons": "osm",
     },
     "settings": {
         "logos_data": "",            # path to .../AppData/Local/Logos; empty = find Ou Dedetai's
@@ -97,6 +97,8 @@ DEFAULTS = {
         "bare_references": True,     # typing just "John 3:16" in KRunner offers Logos
         "devotionals": [],           # titles/abbreviations; empty = your prioritized devotionals
         "devotional_url": "logosres:{logosres}",  # Logos opens calendar devotionals at today
+        "book_url": "logosres:{logosres}",  # o<bible> with no passage: open that Bible where you left it
+        "sermons_url": "logos4:SermonManager",
         "reminders": True,           # reading-plan notifications at each plan's reminder time
         # Books that aren't downloaded yet open by link and Logos offers the download.
         # Set to false to get a notification (title on the clipboard) instead of the link,
@@ -1280,6 +1282,7 @@ def build_commands(cfg, lib):
         ("layout", "Open a layout", "optional filter"),
         ("copy", "Copy verses as text", "a passage"),
         ("devotional", "Today's devotional", "optional filter"),
+        ("sermons", "Sermon Manager", ""),
     ]
     for kind, name, hint in builtin:
         add(Cmd(a.get(kind, ""), kind, name, hint))
@@ -1289,6 +1292,18 @@ def build_commands(cfg, lib):
                 add(Cmd(a["open"] + b.key, "open", b.abbr, "a passage", bible=b))
             if a.get("search"):
                 add(Cmd(a["search"] + b.key, "search", f"Search {b.abbr}", "words", bible=b))
+        # Short forms without the edition, as people type them: okjv → KJV 1900, onasb → NASB95.
+        # Only when nothing else claims the short form (a Bible called just "KJV" keeps it).
+        short = {}
+        for b in lib.bibles:
+            k = re.sub(r"(?<=[a-z])\d+$", "", b.key)
+            if k != b.key and k not in lib.by_key:
+                short.setdefault(k, b)
+        for k, b in short.items():
+            if a.get("open"):
+                add(Cmd(a["open"] + k, "open", b.abbr, "a passage", bible=b))
+            if a.get("search"):
+                add(Cmd(a["search"] + k, "search", f"Search {b.abbr}", "words", bible=b))
         if a.get("open"):
             for l in lib.lexicons:
                 if l.abbr:
@@ -1468,12 +1483,22 @@ def main_service():
                 return self.plan_rows(arg)
             if cmd.kind == "recent":
                 return self.recent_rows(arg)
+            if cmd.kind == "sermons":
+                return [(s["sermons_url"], "Open Sermon Manager", "logos-plasma", HIGHEST, 1.0,
+                         props(subtext="Logos's Sermon Manager"))]
             if cmd.kind == "layout":
                 return self.layout_rows(arg)
             if cmd.kind == "copy" and arg:
                 return self.copy_rows(arg)
             if cmd.kind == "devotional":
                 return self.devotional_rows(arg)
+            if cmd.kind == "open" and cmd.bible is not None and not arg:  # `oesv`: the Bible itself
+                b = cmd.bible
+                p = props(subtext=f"{b.title} · or add a passage")
+                if s["covers"]:
+                    icon_props(p, self.lib.cover(b.record_id))
+                return [(s["book_url"].replace("{logosres}", b.logosres), f"Open {b.abbr}",
+                         "logos-plasma", HIGHEST, 1.0, p)]
             if not arg:
                 return [("", f"{cmd.name}: type {cmd.hint}", "logos-plasma", LOW, 0.5,
                          props(subtext=f"{cmd.alias} <{cmd.hint}>", actions=NO_ACTIONS))]
@@ -1745,6 +1770,7 @@ def main_service():
                      "view-list-details"),
                     ("Every day", f"{a.get('plans','rp')} (reading plans) · {a.get('devotional','today')} (devotional) · "
                                   f"{a.get('layout','lay')} (your layouts) · {a.get('copy','cv')} (copy verses) · "
+                                  f"{a.get('sermons','osm')} (Sermon Manager) · "
                                   "Alt+Shift+L looks up a copied reference", "view-calendar-day"),
                     (f"{a.get('help','logos')} <word> lists matching commands", "e.g. logos search · logos fb", "help-about"),
                 ]
