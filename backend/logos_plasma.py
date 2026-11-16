@@ -19,7 +19,16 @@ handler; afterwards KWin is asked to raise the Logos window.
   rp [filter]          today's readings from your reading plans
 
 Settings and extra commands: ~/.config/logos-plasma/commands.toml
-CLI: --check | --focus-test | --reading-plans (JSON) | --open URL
+CLI: --check | --focus-test | --reading-plans (JSON) | --layouts [--json] | --layout NAME
+     | --reference TEXT | --open URL | --data-sources (JSON)
+
+What this program touches in Logos, in three tiers:
+  1. Documented interfaces, always on: Logos's links (logos4:, logosref:, logosres:)
+     and its published COM API (LoadLayout, CopyBibleVerses, ParseReference…).
+  2. Logos's own local data, read-only: the SQLite databases opened through
+     ro_connect(), all from the Library class. Switched off with
+     `logos_databases = false`; every feature that needs them then hides itself.
+  3. Web: the Verse of the Day widget's picture (in its QML).
 """
 import datetime
 import glob
@@ -59,6 +68,7 @@ DEFAULTS = {
     },
     "settings": {
         "logos_data": "",            # path to .../AppData/Local/Logos; empty = find Ou Dedetai's
+        "logos_databases": True,     # read Logos's local databases (catalog, plans, layouts…); false = links/COM only
         "bible_aliases": True,       # generate o<abbr> / s<abbr> for every owned Bible
         "picker_bibles": [],         # e.g. ["ESV", "LSB", "NASB95"]; empty = automatic
         "picker_order": "usage",     # "usage" = most opened first, "priority" = Logos's Prioritize list
@@ -456,8 +466,31 @@ def find_logos_dirs(override=""):
     return (best[1], best[2]) if best else (None, None)
 
 
+LOGOS_DATA = {"enabled": True}  # tier 2 switch; set from the logos_databases setting
+
+
+class LogosDataOff(sqlite3.OperationalError):
+    """Raised instead of opening a Logos database while logos_databases is off."""
+
+
 def ro_connect(path):
+    """The only way this program opens a Logos database: read-only, and only while allowed."""
+    if not LOGOS_DATA["enabled"]:
+        raise LogosDataOff("reading Logos's databases is turned off (logos_databases = false)")
     return sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=1)
+
+
+def needs_logos_data(default=None):
+    """Library methods that read Logos's databases return `default` while that's off,
+    so the features built on them hide instead of failing."""
+    def wrap(fn):
+        def inner(*args, **kwargs):
+            if not LOGOS_DATA["enabled"]:
+                return default() if callable(default) else default
+            return fn(*args, **kwargs)
+        inner.__name__, inner.__doc__ = fn.__name__, fn.__doc__
+        return inner
+    return wrap
 
 
 class Library:
@@ -479,6 +512,10 @@ class Library:
         return self.data_dir / "LibraryCatalog" / "catalog.db" if self.data_dir else None
 
     def refresh(self, override=""):
+        if not LOGOS_DATA["enabled"]:
+            self.bibles, self.by_key, self.lexicons = [], {}, []
+            self.error = "reading Logos's databases is turned off"
+            return
         now = time.monotonic()
         if now - self._checked < self.REFRESH and self._stamp is not None:
             return
@@ -621,6 +658,7 @@ class Library:
             pool = sorted(self.bibles, key=priority_key)
         return pool[:size]
 
+    @needs_logos_data(list)
     def search_titles(self, words, limit=8):
         sql = ["SELECT r.RecordId, r.ResourceId, r.AbbreviatedTitle, r.Title, r.UseCount,"
                " (SELECT group_concat(AlternateResourceId, ' ') FROM AlternateResourceIds a"
@@ -642,6 +680,7 @@ class Library:
         return out
 
     # Reading plans ----------------------------------------------------------
+    @needs_logos_data(None)
     def logosres_for(self, resource_id):
         row = self.db().execute(
             "SELECT r.ResourceId, (SELECT group_concat(AlternateResourceId, ' ') FROM "
@@ -649,6 +688,7 @@ class Library:
             "WHERE r.ResourceId = ?", (resource_id,)).fetchone()
         return logosres_id(*row) if row else resource_id.split(":", 1)[-1].lower()
 
+    @needs_logos_data(list)
     def reading_plans(self, open_url, today=None):
         """Active plans with their next unread session, most recently used first."""
         today = today or datetime.date.today()
@@ -746,6 +786,7 @@ class Library:
         return out
 
     # Devotionals, Factbook, history ---------------------------------------------
+    @needs_logos_data(list)
     def devotionals(self, names=()):
         rows = self.db().execute("""
             SELECT r.RecordId, r.ResourceId, coalesce(nullif(r.UserAbbreviatedTitle, ''), r.AbbreviatedTitle),
@@ -762,6 +803,7 @@ class Library:
             return [d for w in wanted for d in devs if w in (d.title.lower(), d.abbr.lower())]
         return devs
 
+    @needs_logos_data(list)
     def default_devotionals(self, names=()):
         """The devotionals to feature: configured ones, else prioritized, else the most used."""
         devs = self.devotionals(names)
@@ -770,6 +812,7 @@ class Library:
         pri = [d for d in devs if d.rank]
         return pri[:2] if pri else [d for d in devs[:1] if d.use]
 
+    @needs_logos_data(list)
     def factbook(self, text, limit=8):
         """Factbook entries matching the words typed, ranked the way Logos does: an exact
         name (or alternative name) first, then by how often the Bible mentions the entry."""
@@ -809,6 +852,7 @@ class Library:
                             "description": (desc[0] if desc else "") or "", "mentions": mentions})
         return out
 
+    @needs_logos_data(list)
     def layouts(self):
         """Your saved layouts' names, as in Logos's Layouts menu (no autosaves)."""
         path = self.docs_dir / "LayoutManager" / "layouts.db" if self.docs_dir else None
@@ -819,6 +863,7 @@ class Library:
                               "AND Title <> '' AND Title <> 'Application Closed' GROUP BY Title").fetchall()
         return sorted((r[0] for r in rows), key=str.casefold)
 
+    @needs_logos_data(list)
     def recent(self, open_url, limit=10):
         path = self.data_dir / "HistoryManager" / "history.db" if self.data_dir else None
         if not path or not path.exists():
@@ -848,6 +893,7 @@ class Library:
                 break
         return out
 
+    @needs_logos_data(None)
     def sermon_passage(self, today=None):
         """(title, date, datatype reference) for your next sermon, or the latest one.
         The date comes from the sermon's date field, else a dd/mm/yy date in its title."""
@@ -906,6 +952,7 @@ class Library:
                     return {"title": title, "date": d.isoformat() if d else "", "reference": ref}
         return None
 
+    @needs_logos_data(list)
     def sermon_commentaries(self, sermon, count=3, open_url=""):
         """Your own 4–5★ commentaries covering the sermon passage (or, if you've rated none,
         the best community-rated ones), each linking straight to the passage."""
@@ -947,6 +994,7 @@ class Library:
                         "sermon": {"title": sermon["title"], "passage": readable, "date": sermon["date"]}})
         return out
 
+    @needs_logos_data(list)
     def showcase(self, count=12, seed=None, min_ratings=15):
         """Well-rated books you own but haven't read, one per series/author, rotating daily.
         Books you've rated count as read (271 rated books have no reading progress: read in
@@ -1021,6 +1069,7 @@ class Library:
                         "url": f"logosres:{logosres_id(rid, alts)}", "cover": self.cover_file(rid)})
         return out
 
+    @needs_logos_data(None)
     def resource_for_link(self, url):
         """(title, availability) of the book a logosres: link opens, or None.
         Availability: 2 = downloaded, 1 = owned but in the cloud only."""
@@ -1036,6 +1085,7 @@ class Library:
             ORDER BY r.Availability DESC LIMIT 1""", (lres, lres, "lls:" + lres)).fetchone()
         return (row[0], row[1]) if row else None
 
+    @needs_logos_data('')
     def cover_file(self, resource_id):
         """Write the resource's cover thumbnail to the cache and return its path (for widgets)."""
         if not resource_id:
@@ -1053,11 +1103,13 @@ class Library:
         path.write_bytes(row[0])
         return str(path)
 
+    @needs_logos_data(None)
     def cover_for(self, resource_id):
         row = self.db().execute("SELECT RecordId FROM Records WHERE ResourceId = ?",
                                 (resource_id,)).fetchone()
         return self.cover(row[0]) if row else None
 
+    @needs_logos_data(None)
     def cover(self, record_id, height=64):
         if record_id in self._covers:
             return self._covers[record_id]
@@ -1182,7 +1234,9 @@ class Config:
         self.aliases = {**DEFAULTS["aliases"], **data.get("aliases", {})}
         self.settings = {**DEFAULTS["settings"], **data.get("settings", {})}
         self.commands = [c for c in data.get("command", []) if c.get("alias") and c.get("url")]
-        log(f"config: {len(self.commands)} custom commands")
+        LOGOS_DATA["enabled"] = bool(self.settings.get("logos_databases", True))
+        log(f"config: {len(self.commands)} custom commands"
+            + ("" if LOGOS_DATA["enabled"] else "; Logos databases off"))
 
 
 # ── Matching ─────────────────────────────────────────────────────────────────
@@ -2690,7 +2744,24 @@ if __name__ == "__main__":
         cfg.maybe_reload()
         lib = Library()
         lib.refresh(cfg.settings["logos_data"])
-        print("\n".join(lib.layouts()))
+        names = lib.layouts()
+        print(json.dumps(names, ensure_ascii=False) if "--json" in sys.argv else "\n".join(names))
+    elif "--data-sources" in sys.argv:
+        # For Ou Dedetai and other front ends: which tiers are on, so they show only what works.
+        cfg = Config()
+        cfg.maybe_reload()
+        print(json.dumps({"links": True, "com": True, "logos_databases": LOGOS_DATA["enabled"]}))
+    elif "--reference" in sys.argv:
+        # Open a typed Bible reference ("Jn 3:16", "Rom 8.28-30") in your preferred Bible.
+        cfg = Config()
+        cfg.maybe_reload()
+        text = " ".join(sys.argv[sys.argv.index("--reference") + 1:])
+        refs = lookup_references(text)
+        if not refs:
+            print(f"error: no Bible reference found in {text!r}")
+            sys.exit(1)
+        cli_open(cfg.settings["reference_url"].replace("{q}", refs[0][0]))
+        print(refs[0][1])
     elif "--layout" in sys.argv:
         name, _, ref = " ".join(sys.argv[sys.argv.index("--layout") + 1:]).partition("::")
         print(load_layout(name.strip(), ref=ref.strip()))

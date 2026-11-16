@@ -39,6 +39,9 @@
 # Set one to "" to turn it off.
 
 [settings]
+# Read Logos's local databases (your books, Prioritize order, reading plans, layouts, history).
+# false = only links and the COM API; features that need the databases hide themselves.
+# logos_databases = true
 # Bibles offered by the pickers and used by `otc`. Empty = automatic.
 # picker_bibles = ["ESV", "LSB", "NASB95", "KJV 1900", "SBLGNT", "BHW 4.18"]
 # picker_order = "usage"      # automatic order: "usage" = most opened, "priority" = Logos's Prioritize list

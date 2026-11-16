@@ -41,6 +41,18 @@ content stays in Logos's own encrypted resource files, which this project never 
 The schemas aren't documented and may change with Logos updates. The code reads them
 defensively and degrades gracefully.
 
+### Turning database reading off
+
+Everything above goes through one function, `ro_connect()`, used only by the `Library`
+class. Setting `logos_databases = false` in `commands.toml` stops it opening any of these
+files. Features that need them then return nothing and hide: the Bible and lexicon
+pickers, `ol`, `fb`, `or`, reading plans and reminders, the showcase and the sermon
+shelf, and the list of saved layouts. What still works uses only Logos's documented
+interfaces: bare references and the look-up shortcut (`logosref:` opens your preferred
+Bible), your own `[[command]]` links, `cv` (COM CopyBibleVerses) and `lay <name>` (COM
+LoadLayout, typed by name). `--data-sources` prints which of these are on, for front ends
+such as Ou Dedetai. `tests/test_data_switch.py` checks the switch.
+
 The Verse of the Day widget fetches the public page `https://biblia.com/verseoftheday`.
 That's the same verse and art Logos's home page shows. The widget reads the page's image
 and its "Read in Logos" link.
