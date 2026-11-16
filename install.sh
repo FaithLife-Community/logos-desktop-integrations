@@ -51,6 +51,8 @@ install -Dm755 "$here/uninstall.sh" "$data/logos-plasma/uninstall.sh"
 install -Dm644 "$here/backend/loadlayout.vbs" "$data/logos-plasma/loadlayout.vbs"
 install -Dm644 "$here/backend/copyverses.vbs" "$data/logos-plasma/copyverses.vbs"
 install -Dm644 "$here/backend/scanrefs.vbs" "$data/logos-plasma/scanrefs.vbs"
+# Which release is installed, so Ou Dedetai (or anyone) can tell when an update is out
+install -Dm644 "$here/VERSION" "$data/logos-plasma/VERSION"
 mkdir -p "$conf/logos-plasma"
 if [ ! -e "$conf/logos-plasma/commands.toml" ]; then
     if [ -e "$conf/logos-krunner/commands.toml" ] && grep -q '^\[settings\]' "$conf/logos-krunner/commands.toml"; then

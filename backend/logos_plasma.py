@@ -2499,6 +2499,9 @@ def selftest():
         if ok is False:
             fails.append(name)
 
+    version = XDG_DATA / "logos-plasma" / "VERSION"
+    lines.append(f"Version {version.read_text().strip() if version.is_file() else 'unknown (before 0.5.1)'}")
+
     def attempt(name, fn):
         try:
             ok, detail = fn()
