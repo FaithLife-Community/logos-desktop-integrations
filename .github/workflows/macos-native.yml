@@ -67,7 +67,7 @@ jobs:
           app="macos/build/$VARIANT/Build/Products/Release/LogosDesktopIntegrations.app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$app/Contents/Info.plist")" = true
           test -d "$app/Contents/PlugIns/LogosWidgets.appex"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/LogosDesktopIntegrations"
+          lipo "$app/Contents/MacOS/LogosDesktopIntegrations" -verify_arch arm64 x86_64
           "$app/Contents/MacOS/LogosDesktopIntegrations" --query-json 'lay passage study' > "$RUNNER_TEMP/query.json"
           python3 -c 'import json,os; r=json.load(open(os.environ["RUNNER_TEMP"]+"/query.json")); assert r and "logos-integrations://command" in r[0]["url"]'
       - name: Package preview
