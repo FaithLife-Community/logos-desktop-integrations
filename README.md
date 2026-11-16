@@ -14,7 +14,7 @@ under Wine via [Ou Dedetai](https://github.com/FaithLife-Community/OuDedetai):
   Set a Showcase to **Commentaries for your sermon** instead and it shows the commentaries
   you've rated 4–5★ for the passage of your next sermon document, each opening at that passage,
   or to **Both, half and half**.
-* **Look up in Logos** (Meta+Alt+L): copy a Bible reference anywhere and open it in your
+* **Look up in Logos** (Alt+Shift+L): copy a Bible reference anywhere and open it in your
   preferred Bible. A single word opens Bible Word Study instead.
 * **Reading-plan reminders**: notifications at each plan's reminder time, with a "Read now" button.
 * **Logos Reading Plans** widget: styled after the Reading Plans card on Logos's home page, plus your devotional.
@@ -28,7 +28,7 @@ Everything opens in your running Logos and brings its window to the front.
 ## Install
 
 Requires Plasma 6, Ou Dedetai (which registers the `logos4:` link handler) and
-`python3-dbus` / `python3-gi` (`gir1.2-gdkpixbuf-2.0` for book covers).
+`python3-dbus` / `python3-gi` (`gir1.2-gdkpixbuf-2.0` for book covers), and `wl-clipboard` so the look-up shortcut can read highlighted text.
 
 Install or update with one command:
 

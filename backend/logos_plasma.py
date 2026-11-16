@@ -1691,7 +1691,7 @@ def main_service():
                      "view-list-details"),
                     ("Every day", f"{a.get('plans','rp')} (reading plans) · {a.get('devotional','today')} (devotional) · "
                                   f"{a.get('layout','lay')} (your layouts) · {a.get('copy','cv')} (copy verses) · "
-                                  "Meta+Alt+L looks up a copied reference", "view-calendar-day"),
+                                  "Alt+Shift+L looks up a copied reference", "view-calendar-day"),
                     (f"{a.get('help','logos')} <word> lists matching commands", "e.g. logos search · logos fb", "help-about"),
                 ]
                 # Moderate, so typing "logos" + Enter still launches the Logos app first.
@@ -1708,7 +1708,7 @@ def main_service():
                 rows.append(("", text, "logos-plasma", HIGHEST, 0.8 - len(rows) * 0.001,
                              props(subtext=f"{alias} <{c.hint}>", actions=NO_ACTIONS)))
             for text, sub in [("John 3:16  —  any Bible reference", "Opens in your preferred Bible"),
-                              ("Meta+Alt+L  —  Look up in Logos", "Opens the reference (or word) in the clipboard")]:
+                              ("Alt+Shift+L  —  Look up in Logos", "Opens the reference (or word) in the clipboard")]:
                 if flt in text.lower():
                     rows.append(("", text, "logos-plasma", HIGHEST, 0.7, props(subtext=sub, actions=NO_ACTIONS)))
             return rows[:20]
@@ -2395,8 +2395,17 @@ def selftest():
     out(bool(prefix) and com_registered(prefix), "Logos COM API registered (for layouts)",
         "run logos_plasma.py --register-com" if not (prefix and com_registered(prefix)) else str(prefix))
     sc = XDG_CONFIG / "kglobalshortcutsrc"
-    out(sc.exists() and "logos-plasma-lookup" in sc.read_text(errors="ignore"), "global shortcut bound",
-        "Meta+Alt+L unless you changed it")
+    key = None
+    if sc.exists():
+        m = re.search(r"^\[services\]\[logos-plasma-lookup\.desktop\]\n(?:[^\[\n][^\n]*\n)*?_launch=([^\n]*)",
+                      sc.read_text(errors="ignore"), re.M)
+        key = m.group(1).strip() if m else None
+    out(bool(key), "Look up in Logos shortcut bound",
+        key or ("no key: it may clash with another shortcut; set one in System Settings → Shortcuts"
+                if key == "" else "not registered"))
+    clip = shutil.which("wl-paste") or shutil.which("xclip")
+    out(bool(clip), "reading highlighted text (wl-paste or xclip)",
+        clip or "install wl-clipboard to look up highlighted text, not only copied text")
 
     lines.append("")
     lines.append("── Live KRunner plugin (over D-Bus, exactly what KRunner sees) ──")
