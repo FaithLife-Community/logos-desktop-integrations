@@ -64,12 +64,14 @@ DEFAULTS = {
         "library": "ol", "compare": "otc", "help": "logos",
         "lexicon": "lex", "top": "stb", "everything": "sll", "plans": "rp",
         "wordstudy": "ws", "factbook": "fb", "recent": "or", "devotional": "today",
-        "layout": "lay", "copy": "cv",
+        "layout": "lay", "copy": "cv", "sermons": "osm",
     },
     "settings": {
         "logos_data": "",            # path to .../AppData/Local/Logos; empty = find Ou Dedetai's
         "logos_databases": True,     # read Logos's local databases (catalog, plans, layouts…); false = links/COM only
-        "bible_aliases": True,       # generate o<abbr> / s<abbr> for every owned Bible
+        "bible_aliases": 15,         # o<abbr> / s<abbr> for your top N Bibles (Prioritize list,
+                                     # then most used) plus picker_bibles; true = every Bible
+                                     # (Logos counts manuscripts as Bibles), false = none
         "picker_bibles": [],         # e.g. ["ESV", "LSB", "NASB95"]; empty = automatic
         "picker_order": "usage",     # "usage" = most opened first, "priority" = Logos's Prioritize list
         "picker_size": 6,
@@ -97,6 +99,8 @@ DEFAULTS = {
         "bare_references": True,     # typing just "John 3:16" in KRunner offers Logos
         "devotionals": [],           # titles/abbreviations; empty = your prioritized devotionals
         "devotional_url": "logosres:{logosres}",  # Logos opens calendar devotionals at today
+        "book_url": "logosres:{logosres}",  # o<bible> with no passage: open that Bible where you left it
+        "sermons_url": "logos4:SermonManager",
         "reminders": True,           # reading-plan notifications at each plan's reminder time
         # Books that aren't downloaded yet open by link and Logos offers the download.
         # Set to false to get a notification (title on the clipboard) instead of the link,
@@ -562,9 +566,9 @@ class Library:
                 continue
             bibles.append(Resource(rec, rid, logosres_id(rid, alts), abbr, title,
                                    use or 0, ranks.get(rid, 0)))
-        # When two Bibles share an alias key ("NASB95" vs "NASB 95" para edition), prefer an
-        # exact abbreviation, then the prioritized / most used one.
-        bibles.sort(key=lambda b: (b.abbr.lower() != b.key, priority_key(b), len(b.title)))
+        # When two Bibles share an alias key (the ESV and an ESV fragment or edition), prefer the
+        # prioritized / most used one, then an exact abbreviation.
+        bibles.sort(key=lambda b: (priority_key(b), b.abbr.lower() != b.key, len(b.title)))
         self.bibles = bibles
         self.by_key = {}
         for b in bibles:
@@ -647,6 +651,15 @@ class Library:
         pool = [l for l in self.lexicons if l.rank or l.use]
         pool = [l for l in pool if not want or want in l.langs or not l.langs]
         return pool[:size]
+
+    def top_bibles(self, count, names=()):
+        """Your top `count` Bibles (Prioritize list, then most used) plus any named ones."""
+        named = [self.by_key[norm(n)] for n in names if norm(n) in self.by_key]
+        # Already in priority order. Bibles you've never prioritized or opened only count when
+        # there are none of those yet (a new install), so manuscripts don't take short names.
+        known = [b for b in self.bibles if b.rank or b.use]
+        top = (known or self.bibles)[:count]
+        return top + [b for b in named if b not in top]
 
     def picker(self, names, order, size):
         if names:
@@ -1280,11 +1293,14 @@ def build_commands(cfg, lib):
         ("layout", "Open a layout", "optional filter"),
         ("copy", "Copy verses as text", "a passage"),
         ("devotional", "Today's devotional", "optional filter"),
+        ("sermons", "Sermon Manager", ""),
     ]
     for kind, name, hint in builtin:
         add(Cmd(a.get(kind, ""), kind, name, hint))
-    if s["bible_aliases"]:
-        for b in lib.bibles:
+    n = s["bible_aliases"]
+    if n:
+        aliased = lib.bibles if n is True else lib.top_bibles(int(n), s["picker_bibles"])
+        for b in aliased:
             if a.get("open"):
                 add(Cmd(a["open"] + b.key, "open", b.abbr, "a passage", bible=b))
             if a.get("search"):
@@ -1468,12 +1484,22 @@ def main_service():
                 return self.plan_rows(arg)
             if cmd.kind == "recent":
                 return self.recent_rows(arg)
+            if cmd.kind == "sermons":
+                return [(s["sermons_url"], "Open Sermon Manager", "logos-plasma", HIGHEST, 1.0,
+                         props(subtext="Logos's Sermon Manager"))]
             if cmd.kind == "layout":
                 return self.layout_rows(arg)
             if cmd.kind == "copy" and arg:
                 return self.copy_rows(arg)
             if cmd.kind == "devotional":
                 return self.devotional_rows(arg)
+            if cmd.kind == "open" and cmd.bible is not None and not arg:  # `oesv`: the Bible itself
+                b = cmd.bible
+                p = props(subtext=f"{b.title} · or add a passage")
+                if s["covers"]:
+                    icon_props(p, self.lib.cover(b.record_id))
+                return [(s["book_url"].replace("{logosres}", b.logosres), f"Open {b.abbr}",
+                         "logos-plasma", HIGHEST, 1.0, p)]
             if not arg:
                 return [("", f"{cmd.name}: type {cmd.hint}", "logos-plasma", LOW, 0.5,
                          props(subtext=f"{cmd.alias} <{cmd.hint}>", actions=NO_ACTIONS))]
@@ -1745,6 +1771,7 @@ def main_service():
                      "view-list-details"),
                     ("Every day", f"{a.get('plans','rp')} (reading plans) · {a.get('devotional','today')} (devotional) · "
                                   f"{a.get('layout','lay')} (your layouts) · {a.get('copy','cv')} (copy verses) · "
+                                  f"{a.get('sermons','osm')} (Sermon Manager) · "
                                   "Alt+Shift+L looks up a copied reference", "view-calendar-day"),
                     (f"{a.get('help','logos')} <word> lists matching commands", "e.g. logos search · logos fb", "help-about"),
                 ]
