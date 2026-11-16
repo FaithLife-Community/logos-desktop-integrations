@@ -117,3 +117,27 @@ backend's own parser goes first: it's instant, and reads forms like "jn 1v10", "
 own parser (`ParseReference`, then `ScanForReferences`); that round trip through Wine takes a
 few seconds. It never starts Logos just to parse. Scripts run with Ou Dedetai's own Wine
 directly (`data/bin/wine64` with the Logos prefix), falling back to `oudedetai --wine`.
+
+## GNOME
+
+The same service that answers KRunner (`io.github.FaithlifeCommunity.LogosPlasma`, started on
+demand by D-Bus) also answers GNOME Shell's search interface, `org.gnome.Shell.SearchProvider2`,
+at `/searchprovider`. GNOME asks for result ids for the typed words, then for each id's name,
+description and icon, and calls `ActivateResult` when one is clicked; the service keeps the
+KRunner rows from recent searches to answer those calls, so every command behaves the same.
+
+GNOME Shell reads `*.search-provider.ini` files only from the system data folders
+(`$XDG_DATA_DIRS/gnome-shell/search-providers`), not from `~/.local/share`. The installer writes
+its file to `~/.local/share/logos-plasma/gnome-shell-data/gnome-shell/search-providers/` and adds
+that folder to `XDG_DATA_DIRS` with `~/.config/environment.d/60-logos-desktop-integrations.conf`,
+read when you log in (Flatpak uses the same mechanism). The file's `DesktopId` is Ou Dedetai's
+Logos launcher, so results show under Logos's name and icon; GNOME ignores a provider whose app is
+hidden.
+
+The look-up shortcut is a custom keybinding in `org.gnome.settings-daemon.plugins.media-keys`
+(`custom-keybindings/logos-lookup/`), the same entry Settings → Keyboard → Custom Shortcuts makes,
+running `logos_plasma.py --lookup`. Nothing has to stay running for it.
+
+Logos isn't brought to the front on GNOME: Mutter, like KWin, refuses a background app's request
+to raise its window, and shows "Logos is ready" instead.
+

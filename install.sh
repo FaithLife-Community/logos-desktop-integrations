@@ -1,23 +1,40 @@
 #!/bin/sh
-# Install or update Logos Plasma integrations for the current user (Plasma 6):
-#   - backend + KRunner runner (D-Bus service io.github.FaithlifeCommunity.LogosPlasma)
-#   - Plasma widgets: Logos Verse of the Day, Logos Reading Plans
-# Safe to re-run. Doesn't restart KRunner or plasmashell.
+# Install or update the Logos desktop integrations for the current user.
+#   KDE Plasma 6: KRunner commands, Look up in Logos shortcut, reminders, widgets
+#   GNOME:        search in the Activities overview, Look up in Logos shortcut, reminders
+# Picks the desktop you're running; override with: ./install.sh --plasma | --gnome
+# Safe to re-run. Doesn't restart KRunner, plasmashell or GNOME Shell.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 data=${XDG_DATA_HOME:-$HOME/.local/share}
 conf=${XDG_CONFIG_HOME:-$HOME/.config}
 service=io.github.FaithlifeCommunity.LogosPlasma
 
+case "${1:-}" in
+    --plasma|--kde) desktop=plasma ;;
+    --gnome) desktop=gnome ;;
+    "")
+        case ":${XDG_CURRENT_DESKTOP:-}:" in
+            *:KDE:*) desktop=plasma ;;
+            *:GNOME:*) desktop=gnome ;;
+            *) echo "This installs integrations for KDE Plasma or GNOME, and neither seems to be running" >&2
+               echo "(XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-unset}). Use --plasma or --gnome to choose." >&2
+               exit 1 ;;
+        esac ;;
+    *) echo "usage: $0 [--plasma | --gnome]" >&2; exit 2 ;;
+esac
+echo "Installing the Logos integrations for $( [ "$desktop" = plasma ] && echo "KDE Plasma" || echo GNOME )"
+
 /usr/bin/python3 -c 'import dbus, gi, tomllib' 2>/dev/null || {
-    echo "Missing Python modules. On Kubuntu/Debian: sudo apt install python3-dbus python3-gi" >&2
+    echo "Missing Python modules. Ubuntu/Debian: sudo apt install python3-dbus python3-gi" >&2
+    echo "  Fedora: sudo dnf install python3-dbus python3-gobject · Arch: sudo pacman -S python-dbus python-gobject" >&2
     exit 1
 }
 /usr/bin/python3 -c 'import gi; gi.require_version("GdkPixbuf", "2.0")' 2>/dev/null ||
     echo "Note: book covers need gir1.2-gdkpixbuf-2.0 (optional)." >&2
 
 # ── Remove the pre-repo "logos-krunner" versions ─────────────────────────────
-if [ -e "$data/krunner/dbusplugins/logos-krunner.desktop" ] || [ -d "$data/logos-krunner" ]; then
+if [ "$desktop" = plasma ] && { [ -e "$data/krunner/dbusplugins/logos-krunner.desktop" ] || [ -d "$data/logos-krunner" ]; }; then
     echo "Removing the old logos-krunner install"
     kwriteconfig6 --file krunnerrc --group Plugins --key logos-krunnerEnabled --notify false || true
     pkill -f "$data/logos-krunner/logos_krunner.py" 2>/dev/null || true
@@ -55,8 +72,7 @@ if grep -q 't=My_\(Passage_Guide\|Exegetical_Guide\|Bible_Word_Study\)' "$conf/l
     echo "Updated guide links in commands.toml to Logos's built-in guides (backup: commands.toml.bak)"
 fi
 
-# ── KRunner runner ───────────────────────────────────────────────────────────
-install -Dm644 "$here/krunner/logos-plasma.desktop" "$data/krunner/dbusplugins/logos-plasma.desktop"
+# ── The service behind KRunner / GNOME search, started on demand by D-Bus ────
 install -Dm644 /dev/stdin "$data/dbus-1/services/$service.service" <<EOF
 [D-BUS Service]
 Name=$service
@@ -80,9 +96,12 @@ fi
 # New code takes effect on the next call (D-Bus re-activates the service).
 pkill -f "$data/logos-plasma/logos_plasma.py" 2>/dev/null || true
 
-# Graceful reload of KRunner and plasmashell's search.
-kwriteconfig6 --file krunnerrc --group Plugins --key logos-plasmaEnabled --notify false
-kwriteconfig6 --file krunnerrc --group Plugins --key logos-plasmaEnabled --notify true
+if [ "$desktop" = plasma ]; then
+    # ── KRunner runner, with a graceful reload of KRunner and plasmashell's search
+    install -Dm644 "$here/krunner/logos-plasma.desktop" "$data/krunner/dbusplugins/logos-plasma.desktop"
+    kwriteconfig6 --file krunnerrc --group Plugins --key logos-plasmaEnabled --notify false
+    kwriteconfig6 --file krunnerrc --group Plugins --key logos-plasmaEnabled --notify true
+fi
 
 # ── App identity for notifications ("Logos" in the popup and in
 #    System Settings → Notifications). Launching it just brings Logos forward.
@@ -90,7 +109,7 @@ install -Dm644 /dev/stdin "$data/applications/logos-plasma.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Logos
-Comment=Logos Bible Software integrations for Plasma
+Comment=Logos Bible Software desktop integrations
 Icon=logos-plasma
 Exec=/usr/bin/python3 $data/logos-plasma/logos_plasma.py --focus
 NoDisplay=true
@@ -115,13 +134,18 @@ Actions=selection;
 Name=Look up selected text in Logos
 Exec=/usr/bin/python3 $data/logos-plasma/logos_plasma.py --lookup --selection
 EOF
-# Set the key unless you've chosen one yourself. Plasma clears a key that's already taken
-# (Meta+Alt+L was, on some systems), leaving "_launch=" empty: that counts as unset.
-current=$(kreadconfig6 --file kglobalshortcutsrc --group services --group logos-plasma-lookup.desktop \
-    --key _launch 2>/dev/null || true)
-if [ -z "$current" ]; then
-    kwriteconfig6 --file kglobalshortcutsrc --group services --group logos-plasma-lookup.desktop \
-        --key _launch "Alt+Shift+L" || true
+if [ "$desktop" = plasma ]; then
+    # Set the key unless you've chosen one yourself. Plasma clears a key that's already taken
+    # (Meta+Alt+L was, on some systems), leaving "_launch=" empty: that counts as unset.
+    current=$(kreadconfig6 --file kglobalshortcutsrc --group services --group logos-plasma-lookup.desktop \
+        --key _launch 2>/dev/null || true)
+    if [ -z "$current" ]; then
+        kwriteconfig6 --file kglobalshortcutsrc --group services --group logos-plasma-lookup.desktop \
+            --key _launch "Alt+Shift+L" || true
+    fi
+else
+    # GNOME: a custom keyboard shortcut, as in Settings → Keyboard → Custom Shortcuts
+    /usr/bin/python3 "$data/logos-plasma/logos_plasma.py" --gnome-shortcut install || true
 fi
 
 # Reading what you've highlighted (not just copied) needs wl-paste (Wayland) or xclip (X11)
@@ -129,7 +153,33 @@ if ! command -v wl-paste >/dev/null 2>&1 && ! command -v xclip >/dev/null 2>&1; 
     echo "Note: install wl-clipboard (e.g. sudo apt install wl-clipboard) so Alt+Shift+L can look up"
     echo "      highlighted text; without it, it only looks up what you've copied."
 fi
-kbuildsycoca6 >/dev/null 2>&1 || true
+[ "$desktop" = plasma ] && { kbuildsycoca6 >/dev/null 2>&1 || true; }
+
+# ── GNOME: search in the Activities overview ─────────────────────────────────
+if [ "$desktop" = gnome ]; then
+    # GNOME Shell only reads search providers from the system data folders (XDG_DATA_DIRS),
+    # not your home folder, so add a folder of ours to that list for your session. It takes
+    # effect the next time you log in.
+    shared="$data/logos-plasma/gnome-shell-data"
+    # Show the results under Ou Dedetai's Logos launcher (its name and icon), if we can find it
+    app=$(grep -l -- "--run-installed-app" "$data"/applications/*.desktop 2>/dev/null | head -n1 || true)
+    app=${app:+$(basename "$app")}
+    install -Dm644 /dev/stdin "$shared/gnome-shell/search-providers/$service.search-provider.ini" <<EOF
+[Shell Search Provider]
+DesktopId=${app:-logos-plasma-lookup.desktop}
+BusName=$service
+ObjectPath=/searchprovider
+Version=2
+EOF
+    envfile="$conf/environment.d/60-logos-desktop-integrations.conf"
+    if [ ! -e "$envfile" ]; then
+        install -Dm644 /dev/stdin "$envfile" <<EOF
+# Lets GNOME Shell find the Logos search provider (logos-desktop-integrations)
+XDG_DATA_DIRS=\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}:$shared
+EOF
+        gnome_relogin=1
+    fi
+fi
 
 # ── Reading-plan reminders (systemd user timer, every 5 minutes) ──────────────
 install -Dm644 /dev/stdin "$conf/systemd/user/logos-plasma-reminders.service" <<EOF
@@ -154,20 +204,35 @@ EOF
 systemctl --user daemon-reload && systemctl --user enable --now logos-plasma-reminders.timer >/dev/null 2>&1 ||
     echo "Note: couldn't enable the reminders timer (systemctl --user)." >&2
 
-# ── Widgets ──────────────────────────────────────────────────────────────────
-for w in verse-of-the-day reading-plans showcase; do
-    tmp=$(mktemp -d)
-    cp -r "$here/plasmoids/$w/." "$tmp/"
-    cp "$here/plasmoids/shared/Backend.qml" "$tmp/contents/ui/Backend.qml"
-    kpackagetool6 -t Plasma/Applet --upgrade "$tmp" >/dev/null 2>&1 ||
-        kpackagetool6 -t Plasma/Applet --install "$tmp"
-    rm -rf "$tmp"
-done
+# ── Widgets (Plasma) ─────────────────────────────────────────────────────────
+if [ "$desktop" = plasma ]; then
+    for w in verse-of-the-day reading-plans showcase; do
+        tmp=$(mktemp -d)
+        cp -r "$here/plasmoids/$w/." "$tmp/"
+        cp "$here/plasmoids/shared/Backend.qml" "$tmp/contents/ui/Backend.qml"
+        kpackagetool6 -t Plasma/Applet --upgrade "$tmp" >/dev/null 2>&1 ||
+            kpackagetool6 -t Plasma/Applet --install "$tmp"
+        rm -rf "$tmp"
+    done
+fi
 
 # Logos's COM API (used to open saved layouts) is registered per-user, where Wine doesn't
 # look; copy its registration machine-wide in the Logos prefix. Harmless if already done.
 /usr/bin/python3 "$data/logos-plasma/logos_plasma.py" --register-com || true
 /usr/bin/python3 "$data/logos-plasma/logos_plasma.py" --check
+if [ "$desktop" = gnome ]; then
+    cat <<'EOF'
+
+Done.
+  Search: press Super and type  John 3:16 · cv John 3:16 · fb moses · today · rp · logos
+  Select or copy a reference anywhere, then Alt+Shift+L to open it in Logos.
+  Change the key in Settings → Keyboard → Keyboard Shortcuts → Custom Shortcuts.
+  Check everything:  python3 ~/.local/share/logos-plasma/logos_plasma.py --selftest
+  Uninstall:         sh ~/.local/share/logos-plasma/uninstall.sh
+EOF
+    [ "${gnome_relogin:-}" = 1 ] && echo "  Log out and back in once so GNOME's search finds Logos."
+    exit 0
+fi
 cat <<'EOF'
 
 Done.
