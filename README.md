@@ -38,7 +38,7 @@ Install or update with one command:
 
     curl -fsSL https://raw.githubusercontent.com/FaithLife-Community/logos-desktop-integrations/main/get.sh | sh
 
-This downloads the latest release and runs its `install.sh`; run it again to update. Or from a clone:
+This downloads the latest release and runs its `install.sh`; run it again to update (Ou Dedetai also offers updates). Or from a clone:
 
     git clone https://github.com/FaithLife-Community/logos-desktop-integrations
     cd logos-desktop-integrations
