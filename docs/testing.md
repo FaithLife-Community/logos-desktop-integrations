@@ -1,7 +1,8 @@
 # Test checklist
 
 Run this before a release, and before porting to another desktop: it is the definition of what
-the integrations do. Tick items in a copy (or in the release PR) as you go.
+the integrations do. Tick items in a copy (or in the release PR) as you go. This list is for
+KDE Plasma; GNOME has its own, shorter one in [gnome.md](gnome.md#testing-on-gnome).
 
 **Start here:** install the release being tested, open Logos, then run
 
@@ -108,6 +109,6 @@ Another desktop's server (e.g. Xfce Notify Daemon) can take over from Plasma's.
 - [ ] `sh ~/.local/share/logos-plasma/uninstall.sh` removes the runner, widgets, shortcut and timer, keeping your settings
 
 ## Ou Dedetai
-- [ ] On Plasma with Logos installed and no integrations: the control panel offers them once; "No" isn't asked again
+- [ ] On Plasma or GNOME with Logos installed and no integrations: the control panel offers the ones for that desktop once; "No" isn't asked again
 - [ ] "Yes" installs them; `oudedetai --install-desktop-integrations` installs or updates
 - [ ] Not offered on other desktops, with `-y`, or when already installed

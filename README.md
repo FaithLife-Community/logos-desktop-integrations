@@ -1,10 +1,13 @@
 # Logos desktop integrations
 
-Desktop integrations for Logos Bible Software on Linux. Currently for **KDE Plasma 6**;
-GNOME support is planned.
+Desktop integrations for [Logos Bible Software](https://www.logos.com) running on Linux under
+Wine via [Ou Dedetai](https://github.com/FaithLife-Community/OuDedetai), for **KDE Plasma 6** and
+**GNOME**. The installer picks the one you're running.
 
-KDE Plasma 6 integrations for [Logos Bible Software](https://www.logos.com) running on Linux
-under Wine via [Ou Dedetai](https://github.com/FaithLife-Community/OuDedetai):
+**On GNOME** you get the same commands in the Activities overview search, the Alt+Shift+L
+look-up shortcut, and reading-plan reminders; there are no widgets. See [GNOME](docs/gnome.md).
+
+**On KDE Plasma:**
 
 * **KRunner commands**: a Raycast/BibleWorks-style command line for Logos, available in
   KRunner (Alt+Space) and Plasma's launcher search. See the [KRunner guide](docs/krunner.md).
@@ -21,14 +24,15 @@ under Wine via [Ou Dedetai](https://github.com/FaithLife-Community/OuDedetai):
   It has Today/Anytime tabs, covers, streaks, estimated reading times, overdue labels and
   progress rings. Click a plan to open its next reading.
 
-Everything opens in your running Logos and brings its window to the front.
+Everything opens in your running Logos and, on Plasma, brings its window to the front.
 
 > Community project, not affiliated with or supported by Faithlife.
 
 ## Install
 
-Requires Plasma 6, Ou Dedetai (which registers the `logos4:` link handler) and
+Requires Plasma 6 or GNOME, Ou Dedetai (which registers the `logos4:` link handler) and
 `python3-dbus` / `python3-gi` (`gir1.2-gdkpixbuf-2.0` for book covers), and `wl-clipboard` so the look-up shortcut can read highlighted text.
+On GNOME, log out and back in once after the first install so its search finds Logos.
 
 Install or update with one command:
 
@@ -41,9 +45,10 @@ This downloads the latest release and runs its `install.sh`; run it again to upd
     ./install.sh
 
 To uninstall: `sh ~/.local/share/logos-plasma/uninstall.sh` (removes everything except your
-settings in `~/.config/logos-plasma`). The installer doesn't restart KRunner or Plasma.
+settings in `~/.config/logos-plasma`). The installer doesn't restart KRunner, Plasma or GNOME Shell.
+To choose the desktop yourself: `./install.sh --plasma` or `./install.sh --gnome`.
 
-## KRunner commands
+## Commands (KRunner and GNOME search)
 
 | Type | Does |
 |---|---|
@@ -67,7 +72,7 @@ settings in `~/.config/logos-plasma`). The installer doesn't restart KRunner or 
 
 Aliases, picker Bibles and your own URL commands live in `~/.config/logos-plasma/commands.toml`.
 To add a command, use **Copy location** on a Logos panel and replace the passage or word with `{q}`.
-The [KRunner guide](docs/krunner.md) covers every command in more detail, and [docs/testing.md](docs/testing.md) is the full test checklist.
+The [KRunner guide](docs/krunner.md) covers every command in more detail, and [docs/testing.md](docs/testing.md) is the full test checklist ([GNOME's](docs/gnome.md#testing-on-gnome)).
 
 ## How it works
 

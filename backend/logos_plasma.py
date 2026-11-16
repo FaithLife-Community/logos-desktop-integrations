@@ -39,6 +39,8 @@ BUS_NAME = "io.github.FaithlifeCommunity.LogosPlasma"
 OBJ_PATH = "/runner"
 IFACE = "org.kde.krunner1"
 INTERNAL_IFACE = "io.github.FaithlifeCommunity.LogosPlasma.Internal"
+SEARCH_PATH = "/searchprovider"  # GNOME Shell search provider
+SEARCH_IFACE = "org.gnome.Shell.SearchProvider2"
 
 HOME = Path.home()
 XDG_CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", HOME / ".config"))
@@ -1320,7 +1322,8 @@ def main_service():
 
     class Runner(dbus.service.Object):
         def __init__(self, bus):
-            super().__init__(dbus.service.BusName(BUS_NAME, bus), OBJ_PATH)
+            self.bus_name = dbus.service.BusName(BUS_NAME, bus)
+            super().__init__(self.bus_name, OBJ_PATH)
             self.bus = bus
             self.cfg = Config()
             self.lib = Library()
@@ -1379,11 +1382,8 @@ def main_service():
             if not match_id:
                 return
             if action_id == "copy":
-                try:
-                    self.bus.get_object("org.kde.klipper", "/klipper", introspect=False).setClipboardContents(
-                        match_id, dbus_interface="org.kde.klipper.klipper")
-                except dbus.DBusException as e:
-                    log(f"clipboard: {e}")
+                if not set_clipboard(match_id, self.bus):
+                    log("clipboard: couldn't set it")
                 return
             self.launch(match_id)
 
@@ -1741,11 +1741,7 @@ def main_service():
                 if info and info[1] == 1:
                     title = info[0]
                     log(f"not opening cloud-only book by link (crashes Logos under Wine): {title}")
-                    try:
-                        self.bus.get_object("org.kde.klipper", "/klipper", introspect=False).setClipboardContents(
-                            title, dbus_interface="org.kde.klipper.klipper")
-                    except Exception:
-                        pass
+                    set_clipboard(title, self.bus)
                     notify("Download this book in Logos first",
                            f"“{title}” isn't downloaded yet, and opening it by link can crash Logos. "
                            "Its title is on the clipboard: paste it into Logos's Library to download it.",
@@ -1771,6 +1767,11 @@ def main_service():
             works where in-service KWin calls didn't). Stops all further attempts once Logos
             is confirmed as the active window."""
             if self.focus_done:
+                return False
+            if desktop() != "kde":
+                # Raising another app's window needs KWin scripting. Elsewhere (GNOME) the
+                # desktop shows its own "Logos is ready" notification instead, which is normal there.
+                self.focus_done = True
                 return False
             try:
                 proc = Gio.Subprocess.new([sys.executable, os.path.abspath(__file__), "--raise"],
@@ -1800,11 +1801,8 @@ def main_service():
             if not ok:
                 notify("Couldn't copy the verses", f"{ref}: {text}", bus=self.bus)
                 return
-            try:
-                self.bus.get_object("org.kde.klipper", "/klipper", introspect=False).setClipboardContents(
-                    text, dbus_interface="org.kde.klipper.klipper")
-            except Exception as e:
-                notify("Couldn't copy the verses", f"Clipboard: {e}", bus=self.bus)
+            if not set_clipboard(text, self.bus):
+                notify("Couldn't copy the verses", "Couldn't reach the clipboard (install wl-clipboard).", bus=self.bus)
                 return
             preview = " ".join(text.split())
             notify(f"Copied {ref}", preview[:140] + ("…" if len(preview) > 140 else ""), bus=self.bus)
@@ -1826,8 +1824,75 @@ def main_service():
                     src.destroy()
             self.focus_timers = []
 
+    class SearchProvider(dbus.service.Object):
+        """GNOME Shell's search interface (the Activities overview), answering from the same
+        commands as KRunner. GNOME asks for result ids, then for each id's name, description
+        and icon, and activates an id when it's clicked."""
+
+        def __init__(self, runner):
+            super().__init__(runner.bus_name, SEARCH_PATH)
+            self.runner = runner
+            self.rows = {}  # result id → KRunner-style row from the last searches
+
+        def search(self, terms):
+            query = " ".join(terms)
+            try:
+                self.runner.refresh()
+                rows = self.runner.match(query)
+            except Exception as e:
+                log(f"search({query!r}) failed: {e!r}")
+                return []
+            rows = sorted(rows, key=lambda r: -float(r[4]))
+            if len(self.rows) > 500:
+                self.rows.clear()
+            ids = []
+            for i, row in enumerate(rows):
+                rid = f"{i}\x1f{row[0] or row[1]}"  # unique even for rows with no link (help rows)
+                self.rows[rid] = row
+                ids.append(rid)
+            return dbus.Array(ids, signature="s")
+
+        @dbus.service.method(SEARCH_IFACE, in_signature="as", out_signature="as")
+        def GetInitialResultSet(self, terms):
+            return self.search(terms)
+
+        @dbus.service.method(SEARCH_IFACE, in_signature="asas", out_signature="as")
+        def GetSubsearchResultSet(self, previous, terms):
+            return self.search(terms)
+
+        @dbus.service.method(SEARCH_IFACE, in_signature="as", out_signature="aa{sv}")
+        def GetResultMetas(self, ids):
+            metas = []
+            for rid in ids:
+                row = self.rows.get(rid)
+                if row is None:
+                    continue
+                link, text, icon, _cat, _rel, props = row
+                meta = {"id": rid, "name": text, "description": str(props.get("subtext", ""))}
+                if "icon-data" in props:
+                    meta["icon-data"] = props["icon-data"]
+                else:
+                    meta["gicon"] = icon or "logos-plasma"
+                metas.append(dbus.Dictionary(meta, signature="sv"))
+            return dbus.Array(metas, signature="a{sv}")
+
+        @dbus.service.method(SEARCH_IFACE, in_signature="sasu")
+        def ActivateResult(self, rid, terms, timestamp):
+            row = self.rows.get(rid)
+            if row and row[0]:
+                self.runner.launch(row[0])
+
+        @dbus.service.method(SEARCH_IFACE, in_signature="asu")
+        def LaunchSearch(self, terms, timestamp):
+            # Clicking the provider's own icon: search Logos for the words
+            alias = self.runner.cfg.aliases.get("search") or "s"
+            rows = [r for r in self.runner.match(f"{alias} {' '.join(terms)}") if r[0]]
+            if rows:
+                self.runner.launch(rows[0][0])
+
     DBusGMainLoop(set_as_default=True)
-    Runner(dbus.SessionBus())
+    runner = Runner(dbus.SessionBus())
+    SearchProvider(runner)
     GLib.MainLoop().run()
 
 
@@ -1840,12 +1905,43 @@ FACTBOOK_ICONS = {
 }
 
 
+def desktop():
+    """'kde', 'gnome' or 'other', from the session's XDG_CURRENT_DESKTOP."""
+    names = [d.strip().lower() for d in os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")]
+    if "kde" in names or os.environ.get("KDE_FULL_SESSION") == "true":
+        return "kde"
+    if "gnome" in names:
+        return "gnome"
+    return "other"
+
+
+def set_clipboard(text, bus=None):
+    """Put text on the clipboard: Klipper on Plasma, else wl-copy (Wayland) or xclip (X11)."""
+    import subprocess
+    if desktop() == "kde":
+        try:
+            import dbus
+            (bus or dbus.SessionBus()).get_object("org.kde.klipper", "/klipper", introspect=False) \
+                .setClipboardContents(text, dbus_interface="org.kde.klipper.klipper")
+            return True
+        except Exception:
+            pass
+    for cmd in (["wl-copy"], ["xclip", "-selection", "clipboard"]):
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, input=text, text=True, timeout=5, check=True)
+                return True
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return False
+
+
 def read_clipboard(selection=False):
     """Clipboard (or primary selection) text, via Klipper or wl-paste/xclip."""
     import subprocess
-    cmds = ([["wl-paste", "--primary", "--no-newline"], ["xclip", "-o", "-selection", "primary"]]
-            if selection else [["wl-paste", "--no-newline"], ["xclip", "-o", "-selection", "clipboard"]])
-    if not selection:
+    cmds = ([["wl-paste", "--primary", "--type", "text", "--no-newline"], ["xclip", "-o", "-selection", "primary"]]
+            if selection else [["wl-paste", "--type", "text", "--no-newline"], ["xclip", "-o", "-selection", "clipboard"]])
+    if not selection and desktop() == "kde":
         try:
             import dbus
             text = dbus.SessionBus().get_object("org.kde.klipper", "/klipper").getClipboardContents(
@@ -1902,6 +1998,90 @@ def lookup_references(text):
     if ours:
         return [(encode(r, ":,."), r) for r in ours]
     return logos_scan(text) or []
+
+
+GNOME_PROVIDER_DIR = XDG_DATA / "logos-plasma" / "gnome-shell-data"  # added to XDG_DATA_DIRS
+GNOME_KEYS = "org.gnome.settings-daemon.plugins.media-keys"
+GNOME_SHORTCUT = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/logos-lookup/"
+GNOME_DEFAULT_KEY = "<Shift><Alt>l"
+
+
+def shortcut_key(desk=None):
+    """The key bound to Look up in Logos: a string, "" if the entry has no key, None if absent."""
+    import ast
+    import subprocess
+    desk = desk or desktop()
+    if desk == "gnome":
+        try:
+            r = subprocess.run(["gsettings", "get", f"{GNOME_KEYS}.custom-keybinding:{GNOME_SHORTCUT}", "binding"],
+                               capture_output=True, text=True, timeout=10)
+            return ast.literal_eval(r.stdout.strip()) if r.returncode == 0 else None
+        except (OSError, ValueError, SyntaxError, subprocess.SubprocessError):
+            return None
+    sc = XDG_CONFIG / "kglobalshortcutsrc"
+    if not sc.exists():
+        return None
+    m = re.search(r"^\[services\]\[logos-plasma-lookup\.desktop\]\n(?:[^\[\n][^\n]*\n)*?_launch=([^\n]*)",
+                  sc.read_text(errors="ignore"), re.M)
+    return m.group(1).strip() if m else None
+
+
+def gnome_shortcut(action="install"):
+    """Add (or remove) the Look up in Logos custom shortcut on GNOME, as Settings → Keyboard →
+    Custom Shortcuts would. Keeps a key you've set; won't take one that's already in use."""
+    import ast
+    import subprocess
+
+    def gs(*args):
+        r = subprocess.run(["gsettings", *args], capture_output=True, text=True, timeout=10)
+        if r.returncode:
+            raise RuntimeError(r.stderr.strip() or f"gsettings {' '.join(args)} failed")
+        return r.stdout.strip()
+
+    def paths():
+        v = gs("get", GNOME_KEYS, "custom-keybindings")
+        return ast.literal_eval(v[3:].strip() if v.startswith("@as") else v)
+
+    one = f"{GNOME_KEYS}.custom-keybinding:{GNOME_SHORTCUT}"
+    if not shutil.which("gsettings"):
+        print("gsettings not found (is this GNOME?)")
+        return 1
+    current = paths()
+    if action == "remove":
+        if GNOME_SHORTCUT in current:
+            gs("set", GNOME_KEYS, "custom-keybindings", str([p for p in current if p != GNOME_SHORTCUT]))
+        for k in ("name", "command", "binding"):
+            subprocess.run(["gsettings", "reset", one, k], capture_output=True)
+        print("Removed the Look up in Logos shortcut")
+        return 0
+    if GNOME_SHORTCUT not in current:
+        gs("set", GNOME_KEYS, "custom-keybindings", str(current + [GNOME_SHORTCUT]))
+    def q(text):  # a GVariant string literal
+        return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+    def pretty(k):  # "<Shift><Alt>l" → "Alt+Shift+L"
+        mods = [m.strip("<>").replace("Primary", "Ctrl").replace("Control", "Ctrl") for m in re.findall(r"<[^>]+>", k)]
+        order = {"Ctrl": 0, "Super": 1, "Alt": 2, "Shift": 3}
+        return "+".join(sorted(mods, key=lambda m: order.get(m, 9)) + [re.sub(r"<[^>]+>", "", k).upper()])
+
+    gs("set", one, "name", q("Look up in Logos"))
+    gs("set", one, "command", q(f"/usr/bin/python3 {Path(__file__).resolve()} --lookup"))
+    key = ast.literal_eval(gs("get", one, "binding"))
+    if key:
+        print(f"Look up in Logos: kept your key {pretty(key)}")
+        return 0
+    def norm(k):
+        return "".join(sorted(re.findall(r"<[^>]+>", k.lower()))) + re.sub(r"<[^>]+>", "", k.lower())
+    want = norm(GNOME_DEFAULT_KEY)
+    taken = [line.split(" ", 2)[:2] for line in gs("list-recursively").splitlines()
+             if any(norm(k) == want for k in re.findall(r"'([^']*)'", line.split(" ", 2)[-1]))]
+    if taken:
+        print(f"Look up in Logos: {pretty(GNOME_DEFAULT_KEY)} is already used by {' '.join(taken[0])}; "
+              "choose a key in Settings → Keyboard → Custom Shortcuts")
+        return 0
+    gs("set", one, "binding", q(GNOME_DEFAULT_KEY))
+    print(f"Look up in Logos: {pretty(GNOME_DEFAULT_KEY)}")
+    return 0
 
 
 def cli_lookup(selection=False):
@@ -1982,6 +2162,8 @@ def find_oudedetai():
 
 def wine_prefix(data_dir):
     """…/<prefix>/drive_c/users/<you>/AppData/Local/Logos/Data/<user> → <prefix>"""
+    if not data_dir:
+        return None
     for parent in Path(data_dir).parents:
         if parent.name == "drive_c":
             return parent.parent
@@ -2329,6 +2511,7 @@ def selftest():
     lib = Library()
     lib.refresh(cfg.settings["logos_data"])
     s = cfg.settings
+    desk = desktop()
     lines.append(f"logos-plasma self-test {time.strftime('%Y-%m-%d %H:%M')} · {platform_desc()}")
     lines.append("")
     lines.append("── Logos data (read-only) ──")
@@ -2366,12 +2549,21 @@ def selftest():
             f"{sum(bool(x['cover']) for x in b)} with covers"))(lib.showcase(24)))
 
     lines.append("")
-    lines.append("── Installation ──")
+    lines.append(f"── Installation ({'KDE Plasma' if desk == 'kde' else 'GNOME' if desk == 'gnome' else desk}) ──")
     share = XDG_DATA
-    for name, path in [("runner registered", share / "krunner/dbusplugins/logos-plasma.desktop"),
-                       ("lookup shortcut entry", share / "applications/logos-plasma-lookup.desktop"),
-                       ("reminders timer unit", XDG_CONFIG / "systemd/user/logos-plasma-reminders.timer")]:
+    files = [("lookup shortcut entry", share / "applications/logos-plasma-lookup.desktop"),
+             ("reminders timer unit", XDG_CONFIG / "systemd/user/logos-plasma-reminders.timer")]
+    if desk == "kde":
+        files.insert(0, ("runner registered", share / "krunner/dbusplugins/logos-plasma.desktop"))
+    if desk == "gnome":
+        files += [("search provider", GNOME_PROVIDER_DIR / "gnome-shell/search-providers" / f"{BUS_NAME}.search-provider.ini"),
+                  ("search provider folder added to your session",
+                   XDG_CONFIG / "environment.d/60-logos-desktop-integrations.conf")]
+    for name, path in files:
         out(path.exists(), name, str(path))
+    if desk == "gnome":
+        active = str(GNOME_PROVIDER_DIR) in os.environ.get("XDG_DATA_DIRS", "").split(":")
+        out(active, "GNOME search can see it in this session", "" if active else "log out and back in once")
     try:
         h = subprocess.run(["xdg-mime", "query", "default", "x-scheme-handler/logos4"],
                            capture_output=True, text=True, timeout=5).stdout.strip()
@@ -2384,61 +2576,68 @@ def selftest():
         out(r == "active", "reminders timer running", r)
     except Exception as e:
         out(None, "reminders timer running", repr(e))
-    try:
-        r = subprocess.run(["kpackagetool6", "-t", "Plasma/Applet", "--list"],
-                           capture_output=True, text=True, timeout=10).stdout
-        for w in ("LogosVerseOfTheDay", "LogosReadingPlans", "LogosShowcase"):
-            out(f"io.github.FaithlifeCommunity.{w}" in r, f"widget installed: {w}")
-    except FileNotFoundError:
-        out(None, "widgets installed", "kpackagetool6 not found (not KDE?)")
+    if desk == "kde":
+        try:
+            r = subprocess.run(["kpackagetool6", "-t", "Plasma/Applet", "--list"],
+                               capture_output=True, text=True, timeout=10).stdout
+            for w in ("LogosVerseOfTheDay", "LogosReadingPlans", "LogosShowcase"):
+                out(f"io.github.FaithlifeCommunity.{w}" in r, f"widget installed: {w}")
+        except FileNotFoundError:
+            out(None, "widgets installed", "kpackagetool6 not found")
     prefix = wine_prefix(lib.data_dir)
     out(bool(prefix) and com_registered(prefix), "Logos COM API registered (for layouts)",
         "run logos_plasma.py --register-com" if not (prefix and com_registered(prefix)) else str(prefix))
-    sc = XDG_CONFIG / "kglobalshortcutsrc"
-    key = None
-    if sc.exists():
-        m = re.search(r"^\[services\]\[logos-plasma-lookup\.desktop\]\n(?:[^\[\n][^\n]*\n)*?_launch=([^\n]*)",
-                      sc.read_text(errors="ignore"), re.M)
-        key = m.group(1).strip() if m else None
+    key = shortcut_key(desk)
     out(bool(key), "Look up in Logos shortcut bound",
-        key or ("no key: it may clash with another shortcut; set one in System Settings → Shortcuts"
+        key or ("no key: it may clash with another shortcut; set one in "
+                + ("System Settings → Shortcuts" if desk == "kde" else "Settings → Keyboard → Custom Shortcuts")
                 if key == "" else "not registered"))
     clip = shutil.which("wl-paste") or shutil.which("xclip")
     out(bool(clip), "reading highlighted text (wl-paste or xclip)",
         clip or "install wl-clipboard to look up highlighted text, not only copied text")
 
     lines.append("")
-    lines.append("── Live KRunner plugin (over D-Bus, exactly what KRunner sees) ──")
     try:
         import dbus
         bus = dbus.SessionBus()
-        runner = bus.get_object(BUS_NAME, OBJ_PATH)
+        runner = bus.get_object(BUS_NAME, OBJ_PATH if desk != "gnome" else SEARCH_PATH)
     except Exception as e:
         out(None, "session bus", f"not reachable here ({e.__class__.__name__}); run this on your desktop")
         return finish(lines, fails)
+    if desk == "gnome":
+        lines.append("── Live GNOME search provider (over D-Bus, exactly what GNOME Shell sees) ──")
+    else:
+        lines.append("── Live KRunner plugin (over D-Bus, exactly what KRunner sees) ──")
     for q, want in SELFTEST_QUERIES:
         try:
-            rows = runner.Match(q, dbus_interface=IFACE, timeout=20)
+            if desk == "gnome":
+                ids = runner.GetInitialResultSet(q.split(), dbus_interface=SEARCH_IFACE, timeout=20)
+                metas = runner.GetResultMetas(ids[:1], dbus_interface=SEARCH_IFACE, timeout=20) if ids else []
+                rows = [(str(i).split("\x1f", 1)[-1], str(m.get("name", ""))) for i, m in zip(ids, metas)] \
+                    + [("", "")] * max(0, len(ids) - len(metas))
+            else:
+                rows = runner.Match(q, dbus_interface=IFACE, timeout=20)
         except Exception as e:
-            out(False, f"krunner “{q}”", repr(e)[:120])
+            out(False, f"search “{q}”", repr(e)[:120])
             continue
         if not rows:
-            out(False, f"krunner “{q}”", "no rows")
+            out(False, f"search “{q}”", "no results")
             continue
         mid, title = str(rows[0][0]), str(rows[0][1])
         ok = want in ("help", "any") or mid.startswith(("logos4:", "logosres:", "logosref:", LAYOUT_PREFIX, COPY_PREFIX))
-        out(ok, f"krunner “{q}”", f"{len(rows)} rows; first: {title[:50]}" + (f" → {mid[:70]}" if mid else ""))
+        out(ok, f"search “{q}”", f"{len(rows)} results; first: {title[:50]}" + (f" → {mid[:70]}" if mid else ""))
     try:
         info = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications") \
             .GetServerInformation(dbus_interface="org.freedesktop.Notifications")
         out(True, "notification server", f"{info[0]} {info[2]}")
     except Exception as e:
         out(False, "notification server", repr(e)[:100])
-    try:
-        bus.get_object("org.kde.KWin", "/Scripting", introspect=False)
-        out(True, "KWin scripting (for bringing Logos to the front)")
-    except Exception as e:
-        out(False, "KWin scripting", repr(e)[:100])
+    if desk == "kde":
+        try:
+            bus.get_object("org.kde.KWin", "/Scripting", introspect=False)
+            out(True, "KWin scripting (for bringing Logos to the front)")
+        except Exception as e:
+            out(False, "KWin scripting", repr(e)[:100])
     if "--live" in sys.argv:
         lines.append("")
         lines.append("── Live: opens John 3:16 in Logos and checks it comes to the front ──")
@@ -2473,7 +2672,10 @@ def finish(lines, fails):
 
 
 if __name__ == "__main__":
-    if "--register-com" in sys.argv:
+    if "--gnome-shortcut" in sys.argv:
+        i = sys.argv.index("--gnome-shortcut")
+        sys.exit(gnome_shortcut(sys.argv[i + 1] if len(sys.argv) > i + 1 else "install"))
+    elif "--register-com" in sys.argv:
         cfg = Config()
         cfg.maybe_reload()
         data, _ = find_logos_dirs(cfg.settings["logos_data"])
