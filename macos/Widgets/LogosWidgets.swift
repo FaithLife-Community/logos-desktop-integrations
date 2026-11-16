@@ -104,7 +104,7 @@ struct ItemWidgetView: View {
 
 struct CommandOptions: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Logos command"
-    @Parameter(title: "Title", default: "Passage Study") var title: String
+    @Parameter(title: "Title", default: "Passage Study") var displayTitle: String
     @Parameter(title: "Logos command", default: "open passage study layout") var command: String
 }
 struct CommandProvider: AppIntentTimelineProvider {
@@ -115,7 +115,7 @@ struct CommandProvider: AppIntentTimelineProvider {
     }
     private func entry(_ configuration: CommandOptions) -> LogosEntry {
         LogosEntry(date: Date(), snapshot: IntegrationSnapshot(items: [
-            LibraryItem(id: "command", title: configuration.title, subtitle: "Open in Logos",
+            LibraryItem(id: "command", title: configuration.displayTitle, subtitle: "Open in Logos",
                         url: SharedStore.commandURL(configuration.command), category: "pinned")]))
     }
 }
